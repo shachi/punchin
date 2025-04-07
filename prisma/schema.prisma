@@ -5,7 +5,7 @@ generator client {
 
 datasource db {
   provider = "sqlite"
-  url      = "file:./dev.db"
+  url      = env("DATABASE_URL")
 }
 
 model User {
@@ -23,7 +23,7 @@ model User {
 model AttendanceRecord {
   id          String    @id @default(cuid())
   userId      String
-  user        User      @relation(fields: [userId], references: [id])
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   date        DateTime  @default(now())
   checkIn     DateTime?
   breakStart  DateTime?
@@ -36,7 +36,7 @@ model AttendanceRecord {
 model UserState {
   id           String    @id @default(cuid())
   userId       String    @unique
-  user         User      @relation(fields: [userId], references: [id])
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   currentState String    // not_checked_in, checked_in, on_break, checked_out, absent
   lastUpdated  DateTime  @default(now())
 }

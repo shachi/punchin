@@ -21,7 +21,7 @@ export default function Header() {
                     ダッシュボード
                   </Link>
                 </li>
-                {session.user.isAdmin && (
+                {session.user?.isAdmin && (
                   <li>
                     <Link href="/admin" className="hover:underline">
                       管理画面

@@ -29,7 +29,7 @@ export default function Layout({
     return null;
   }
 
-  if (requireAdmin && (!session || !session.user.isAdmin)) {
+  if (requireAdmin && (!session || !session.user?.isAdmin)) {
     router.push("/dashboard");
     return null;
   }

@@ -30,7 +30,9 @@ export default function Register() {
 
       router.push("/login?registered=true");
     } catch (err) {
-      setError(err.message);
+      const errorMessage =
+        err instanceof Error ? err.message : "ユーザー登録に失敗しました";
+      setError(errorMessage);
     }
   };
 
