@@ -77,7 +77,11 @@ export default function Header() {
                   )}
                   <li>
                     <button
-                      onClick={() => signOut({ callbackUrl: "/" })}
+                      onClick={() =>
+                        signOut({
+                          callbackUrl: `${window.location.origin}/login`,
+                        })
+                      }
                       className="bg-white text-indigo-600 px-4 py-1 rounded-md hover:bg-indigo-50 transition duration-150"
                     >
                       ログアウト
