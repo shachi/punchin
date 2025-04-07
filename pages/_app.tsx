@@ -1,4 +1,5 @@
 // pages/_app.tsx
+import "../styles/global.css";
 import { SessionProvider } from "next-auth/react";
 import { AppProps } from "next/app";
 

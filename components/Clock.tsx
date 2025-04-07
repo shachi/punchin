@@ -27,7 +27,7 @@ export default function Clock() {
 
   return (
     <div className="text-center">
-      <div className="text-6xl font-mono font-bold mb-2 text-indigo-800 tracking-wider">
+      <div className="text-4xl md:text-5xl font-mono font-bold mb-2 text-indigo-800 tracking-wider">
         {hours}
         <span className="animate-pulse">:</span>
         {minutes}
