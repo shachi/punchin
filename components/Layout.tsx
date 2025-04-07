@@ -21,7 +21,14 @@ export default function Layout({
   const router = useRouter();
 
   if (status === "loading") {
-    return <div className="loading">Loading...</div>;
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-100">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500 mx-auto"></div>
+          <p className="mt-4 text-gray-600">読み込み中...</p>
+        </div>
+      </div>
+    );
   }
 
   if (requireAuth && !session) {
@@ -35,19 +42,24 @@ export default function Layout({
   }
 
   return (
-    <div>
+    <div className="flex flex-col min-h-screen bg-gray-100">
       <Head>
         <title>{title}</title>
-        <meta name="description" content="勤怠管理システム" />
+        <meta
+          name="description"
+          content="シンプルで使いやすい勤怠管理システム"
+        />
         <link rel="icon" href="/favicon.ico" />
       </Head>
 
       <Header />
 
-      <main className="container mx-auto px-4 py-8">{children}</main>
+      <main className="flex-grow container mx-auto px-4 py-8">{children}</main>
 
-      <footer className="bg-gray-100 py-4 text-center">
-        <p>© 2025 勤怠管理システム</p>
+      <footer className="bg-white py-4 shadow-inner">
+        <div className="container mx-auto px-4 text-center text-gray-600 text-sm">
+          <p>© {new Date().getFullYear()} 勤怠管理システム</p>
+        </div>
       </footer>
     </div>
   );

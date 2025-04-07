@@ -21,15 +21,19 @@ export default function Clock() {
   const dateString = `${time.getFullYear()}年${time.getMonth() + 1}月${time.getDate()}日(${weekdays[time.getDay()]})`;
 
   // 時刻のフォーマット
-  const timeString = time.toLocaleTimeString("ja-JP", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
+  const hours = String(time.getHours()).padStart(2, "0");
+  const minutes = String(time.getMinutes()).padStart(2, "0");
+  const seconds = String(time.getSeconds()).padStart(2, "0");
 
   return (
     <div className="text-center">
-      <div className="text-5xl font-bold mb-2">{timeString}</div>
+      <div className="text-6xl font-mono font-bold mb-2 text-indigo-800 tracking-wider">
+        {hours}
+        <span className="animate-pulse">:</span>
+        {minutes}
+        <span className="animate-pulse">:</span>
+        {seconds}
+      </div>
       <div className="text-xl text-gray-600">{dateString}</div>
     </div>
   );
