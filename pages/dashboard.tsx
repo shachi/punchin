@@ -1,6 +1,7 @@
 // pages/dashboard.tsx
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
+import { useRouter } from "next/router";
 import Layout from "../components/Layout";
 import AttendanceButtons from "../components/AttendanceButtons";
 import Clock from "../components/Clock";
@@ -19,18 +20,33 @@ interface AttendanceRecord {
 }
 
 export default function Dashboard() {
-  const { data: session } = useSession();
+  const router = useRouter();
+  const { data: session, status } = useSession();
   const [userState, setUserState] = useState("loading");
   const [record, setRecord] = useState<AttendanceRecord | null>(null);
   const [message, setMessage] = useState({ text: "", type: "" });
 
-  // pages/dashboard.tsx の関連部分を修正
+  // セッション状態に基づくリダイレクト処理
+  useEffect(() => {
+    if (status === "loading") {
+      return; // セッション読み込み中は何もしない
+    }
 
+    if (status === "unauthenticated") {
+      router.push("/login"); // 認証されていない場合はログインページへ
+    }
+  }, [status, router]);
   // 状態取得を強化
   const fetchUserState = async () => {
     try {
+      setUserState("loading");
       const response = await fetch("/api/attendance/state");
       if (!response.ok) {
+        if (response.status === 401) {
+          // 認証エラーの場合はログインページへ
+          router.push("/login");
+          return;
+        }
         throw new Error("状態の取得に失敗しました");
       }
 
@@ -48,7 +64,10 @@ export default function Dashboard() {
           });
         }
       } else {
-        setMessage({ text: data.message, type: "error" });
+        setMessage({
+          text: data.message || "状態の取得に失敗しました",
+          type: "error",
+        });
       }
     } catch (error) {
       setMessage({ text: "エラーが発生しました", type: "error" });
