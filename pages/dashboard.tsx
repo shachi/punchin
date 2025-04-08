@@ -39,24 +39,22 @@ export default function Dashboard() {
   // 状態取得を強化
   const fetchUserState = async () => {
     try {
-      setUserState("loading");
+      console.log("Fetching user state...");
       const response = await fetch("/api/attendance/state");
+
       if (!response.ok) {
-        if (response.status === 401) {
-          // 認証エラーの場合はログインページへ
-          router.push("/login");
-          return;
-        }
         throw new Error("状態の取得に失敗しました");
       }
 
       const data = await response.json();
+      console.log("State API response:", data);
 
       if (data.success) {
+        // 状態を更新
         setUserState(data.currentState || "not_checked_in");
         setRecord(data.record);
 
-        // 日付変更があった場合のメッセージ
+        // 日付変更の通知
         if (data.dateChanged) {
           setMessage({
             text: "業務日が変わりました。新しい日の勤怠を記録できます。",
@@ -70,67 +68,68 @@ export default function Dashboard() {
         });
       }
     } catch (error) {
+      console.error("Error fetching state:", error);
       setMessage({ text: "エラーが発生しました", type: "error" });
-      console.error(error);
     }
   };
 
   // 出社ボタンクリック時の処理
   const handleCheckIn = async () => {
     try {
+      console.log("Checking in...");
+      setMessage({ text: "処理中...", type: "info" });
+
       const response = await fetch("/api/attendance/check-in", {
         method: "POST",
       });
 
-      if (response.status === 400) {
-        // 400エラーの場合、状態を再取得して同期
-        const errorData = await response.json();
-        setMessage({ text: errorData.message, type: "error" });
-        fetchUserState(); // 状態を再取得して同期
-        return;
-      }
-
       const data = await response.json();
+      console.log("Check-in API response:", data);
 
       if (data.success) {
-        setUserState(data.currentState);
-        setMessage({ text: data.message, type: "success" });
-        fetchUserState(); // 変更後の最新状態を取得
+        setUserState(data.currentState || "checked_in");
+        setMessage({ text: data.message || "出社しました", type: "success" });
+        fetchUserState(); // 最新の状態を取得
       } else {
-        setMessage({ text: data.message, type: "error" });
+        // エラーの場合も状態を更新（APIからの返送値があれば）
+        if (data.currentState) {
+          setUserState(data.currentState);
+        }
+        setMessage({
+          text: data.message || "処理に失敗しました",
+          type: "error",
+        });
+        fetchUserState(); // 最新の状態を取得
       }
     } catch (error) {
-      console.error(error);
+      console.error("Error checking in:", error);
       setMessage({ text: "エラーが発生しました", type: "error" });
     }
   };
 
   // 日付変更の検出用タイマー
   useEffect(() => {
-    // 1分ごとに確認
-    const timer = setInterval(() => {
-      const now = new Date();
-      // AM4:00になったら状態を再取得
-      if (now.getHours() === 4 && now.getMinutes() === 0) {
-        fetchUserState();
-        setMessage({
-          text: "業務日が変わりました。新しい日の勤怠を記録できます。",
-          type: "info",
-        });
-      }
-    }, 60000); // 1分ごと
-
-    return () => clearInterval(timer);
-  }, []);
-
-  // ページ読み込み時と定期的な状態更新
-  useEffect(() => {
     if (session) {
+      // 初回読み込み時に状態取得
       fetchUserState();
 
-      // 5分ごとに状態を更新
+      // 1分ごとにチェック
+      const timer = setInterval(() => {
+        const now = new Date();
+        // AM4:00直後の場合は特別処理
+        if (now.getHours() === 4 && now.getMinutes() < 5) {
+          console.log("It's around 4 AM, checking state...");
+          fetchUserState();
+        }
+      }, 60000);
+
+      // 5分ごとに定期更新
       const refreshInterval = setInterval(fetchUserState, 300000);
-      return () => clearInterval(refreshInterval);
+
+      return () => {
+        clearInterval(timer);
+        clearInterval(refreshInterval);
+      };
     }
   }, [session]);
 
@@ -198,31 +197,9 @@ export default function Dashboard() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {/* 出社ボタン */}
-              {(userState === "not_checked_in" || userState === "loading") && (
+              {userState === "not_checked_in" && (
                 <button
-                  onClick={() => {
-                    fetch("/api/attendance/check-in", { method: "POST" })
-                      .then((res) => res.json())
-                      .then((data) => {
-                        if (data.success) {
-                          setUserState(data.currentState);
-                          setMessage({ text: data.message, type: "success" });
-                          fetchUserState();
-                        } else {
-                          setMessage({
-                            text: data.message || "処理に失敗しました",
-                            type: "error",
-                          });
-                        }
-                      })
-                      .catch((err) => {
-                        console.error(err);
-                        setMessage({
-                          text: "エラーが発生しました",
-                          type: "error",
-                        });
-                      });
-                  }}
+                  onClick={handleCheckIn}
                   className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded"
                 >
                   出社
@@ -319,7 +296,7 @@ export default function Dashboard() {
                         });
                       });
                   }}
-                  className="bg-yellow-500 hover:bg-yellow-600 text-white font-medium py-3 px-4 rounded-md transition duration-150 shadow-sm"
+                  className="bg-green-500 hover:bg-green-600 text-white font-medium py-3 px-4 rounded-md transition duration-150 shadow-sm"
                 >
                   退社
                 </button>
@@ -353,7 +330,7 @@ export default function Dashboard() {
                         });
                     }
                   }}
-                  className="bg-yellow-500 hover:bg-yellow-600 text-white font-medium py-3 px-4 rounded-md transition duration-150 shadow-sm"
+                  className="bg-red-500 hover:bg-red-600 text-white font-medium py-3 px-4 rounded-md transition duration-150 shadow-sm"
                 >
                   欠勤
                 </button>

@@ -25,32 +25,39 @@ export default async function handler(
 
     const userId = session.user.id;
 
-    // 現在の業務日を取得
+    // 業務日の取得
     const now = new Date();
     const businessDate = new Date(now);
+
     if (now.getHours() < 4) {
       businessDate.setDate(businessDate.getDate() - 1);
     }
     businessDate.setHours(0, 0, 0, 0);
 
-    // ユーザー状態を確認
+    // まず状態をリセットするかチェック
     const userState = await prisma.userState.findUnique({
       where: { userId },
     });
 
-    // 状態の最終更新日を業務日に変換
-    let lastUpdatedDate = null;
+    // 状態の最終更新日
+    let lastUpdatedBusinessDate = null;
     if (userState?.lastUpdated) {
-      lastUpdatedDate = new Date(userState.lastUpdated);
-      if (lastUpdatedDate.getHours() < 4) {
-        lastUpdatedDate.setDate(lastUpdatedDate.getDate() - 1);
-      }
-      lastUpdatedDate.setHours(0, 0, 0, 0);
-    }
+      const lastUpdated = new Date(userState.lastUpdated);
+      lastUpdatedBusinessDate = new Date(lastUpdated);
 
-    // 日付が変わっている場合は状態をリセット
-    if (lastUpdatedDate && businessDate.getTime() > lastUpdatedDate.getTime()) {
-      console.log("日付が変わっているため状態をリセットします");
+      if (lastUpdated.getHours() < 4) {
+        lastUpdatedBusinessDate.setDate(lastUpdatedBusinessDate.getDate() - 1);
+      }
+      lastUpdatedBusinessDate.setHours(0, 0, 0, 0);
+    }
+    // 業務日が変わった場合は状態をリセット
+    if (
+      lastUpdatedBusinessDate &&
+      businessDate.getTime() > lastUpdatedBusinessDate.getTime() &&
+      userState?.currentState !== "not_checked_in"
+    ) {
+      console.log("Resetting state due to business day change");
+
       await prisma.userState.update({
         where: { userId },
         data: {
@@ -61,17 +68,17 @@ export default async function handler(
     }
 
     // 最新の状態を再取得
-    const currentUserState = await prisma.userState.findUnique({
+    const updatedUserState = await prisma.userState.findUnique({
       where: { userId },
     });
 
-    if (
-      currentUserState?.currentState !== "not_checked_in" &&
-      currentUserState?.currentState !== "checked_out"
-    ) {
-      return res
-        .status(400)
-        .json({ success: false, message: "既に出社済みです" });
+    // ここで改めて状態チェック
+    if (updatedUserState?.currentState !== "not_checked_in") {
+      return res.status(400).json({
+        success: false,
+        message: "既に出社済みです",
+        currentState: updatedUserState?.currentState,
+      });
     }
 
     // 業務日の範囲を設定
