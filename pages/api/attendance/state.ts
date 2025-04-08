@@ -26,7 +26,7 @@ export default async function handler(
     const userId = session.user.id;
     console.log("状態取得 - ユーザーID:", userId);
 
-    // 業務日の境界チェック（AM4時）
+    // 現在の日時と業務日を取得
     const now = new Date();
     const businessDate = new Date(now);
 
@@ -35,13 +35,37 @@ export default async function handler(
     }
     businessDate.setHours(0, 0, 0, 0);
 
-    // ユーザーの状態を取得
+    console.log("現在時刻:", now);
+    console.log("業務日:", businessDate);
+
+    // ユーザー状態を取得
     const userState = await prisma.userState.findUnique({
       where: { userId },
     });
-    // 状態の最終更新日を取得
+
+    console.log("ユーザー状態:", userState);
+
+    // 状態がない場合は作成
+    if (!userState) {
+      const newState = await prisma.userState.create({
+        data: {
+          userId,
+          currentState: "not_checked_in",
+          lastUpdated: now,
+        },
+      });
+
+      return res.status(200).json({
+        success: true,
+        currentState: "not_checked_in",
+        record: null,
+        dateChanged: false,
+      });
+    }
+
+    // 状態の最終更新日の業務日を計算
     let lastUpdatedBusinessDate = null;
-    if (userState?.lastUpdated) {
+    if (userState.lastUpdated) {
       const lastUpdated = new Date(userState.lastUpdated);
       lastUpdatedBusinessDate = new Date(lastUpdated);
 
@@ -50,18 +74,18 @@ export default async function handler(
       }
       lastUpdatedBusinessDate.setHours(0, 0, 0, 0);
     }
-    console.log("Current business date:", businessDate);
-    console.log("Last updated business date:", lastUpdatedBusinessDate);
-    console.log("Current user state:", userState?.currentState);
+
+    console.log("最終更新業務日:", lastUpdatedBusinessDate);
+    console.log("現在の状態:", userState.currentState);
 
     // 業務日が変わった場合は状態をリセット
     let stateChanged = false;
     if (
       lastUpdatedBusinessDate &&
       businessDate.getTime() > lastUpdatedBusinessDate.getTime() &&
-      userState?.currentState !== "not_checked_in"
+      userState.currentState !== "not_checked_in"
     ) {
-      console.log("Resetting state due to business day change");
+      console.log("業務日が変わったため状態をリセットします");
 
       await prisma.userState.update({
         where: { userId },
@@ -73,16 +97,19 @@ export default async function handler(
 
       stateChanged = true;
     }
-    // 最新の状態を再取得
+
+    // 最新の状態（リセットした場合は "not_checked_in"）
     const currentState = stateChanged
       ? "not_checked_in"
-      : userState?.currentState || "not_checked_in";
+      : userState.currentState;
 
-    // 業務日の範囲で記録を検索
+    // 業務日の記録を検索
     const businessDayStart = new Date(businessDate);
     const businessDayEnd = new Date(businessDate);
     businessDayEnd.setDate(businessDayEnd.getDate() + 1);
     businessDayEnd.setHours(3, 59, 59, 999);
+
+    console.log("業務日の範囲:", businessDayStart, "から", businessDayEnd);
 
     const record = await prisma.attendanceRecord.findFirst({
       where: {
@@ -93,14 +120,15 @@ export default async function handler(
         },
       },
     });
+    console.log("業務日の記録:", record);
 
-    console.log("Found attendance record:", record);
-
+    // クライアントに最新の状態を返す
     return res.status(200).json({
       success: true,
       currentState,
       record,
       dateChanged: stateChanged,
+      lastUpdated: now.toISOString(), // 最終更新時刻も返す
     });
   } catch (error) {
     console.error("Error fetching user state:", error);

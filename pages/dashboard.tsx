@@ -113,22 +113,47 @@ export default function Dashboard() {
       // 初回読み込み時に状態取得
       fetchUserState();
 
-      // 1分ごとにチェック
-      const timer = setInterval(() => {
-        const now = new Date();
-        // AM4:00直後の場合は特別処理
-        if (now.getHours() === 4 && now.getMinutes() < 5) {
-          console.log("It's around 4 AM, checking state...");
+      // ページがフォーカスを取得したときに状態を更新
+      const handleFocus = () => {
+        console.log("Window focused, updating state");
+        fetchUserState();
+      };
+
+      // ページが表示状態になったときに状態を更新
+      const handleVisibilityChange = () => {
+        if (document.visibilityState === "visible") {
+          console.log("Page became visible, updating state");
           fetchUserState();
         }
+      };
+
+      // 1分ごとにチェック（特にAM4時周辺）
+      const timer = setInterval(() => {
+        const now = new Date();
+        console.log("Regular check:", now.toLocaleTimeString());
+
+        // AM4:00ちょうどに近い場合は強制リロード
+        if (now.getHours() === 4 && now.getMinutes() === 0) {
+          console.log("It's 4:00 AM, reloading page");
+          window.location.reload();
+          return;
+        }
+
+        // それ以外は通常の更新
+        fetchUserState();
       }, 60000);
 
-      // 5分ごとに定期更新
-      const refreshInterval = setInterval(fetchUserState, 300000);
+      // イベントリスナーを登録
+      window.addEventListener("focus", handleFocus);
+      document.addEventListener("visibilitychange", handleVisibilityChange);
 
       return () => {
+        window.removeEventListener("focus", handleFocus);
+        document.removeEventListener(
+          "visibilitychange",
+          handleVisibilityChange,
+        );
         clearInterval(timer);
-        clearInterval(refreshInterval);
       };
     }
   }, [session]);
@@ -182,9 +207,37 @@ export default function Dashboard() {
             <Clock />
 
             <div className="my-6">
-              <h2 className="text-lg font-medium text-gray-700 mb-2">
-                現在の状態
-              </h2>
+              <div className="flex justify-between items-center mb-2">
+                <h2 className="text-lg font-medium text-gray-700">
+                  現在の状態
+                </h2>
+                <button
+                  onClick={() => {
+                    setMessage({
+                      text: "状態を更新しています...",
+                      type: "info",
+                    });
+                    fetchUserState();
+                  }}
+                  className="text-sm text-blue-600 hover:text-blue-800 flex items-center"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-4 w-4 mr-1"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                    />
+                  </svg>
+                  更新
+                </button>
+              </div>
               <div className="inline-block px-4 py-2 rounded-full bg-blue-100 text-blue-800 font-medium">
                 {getStatusText(userState)}
               </div>
