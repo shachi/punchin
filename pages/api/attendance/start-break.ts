@@ -24,26 +24,30 @@ export default async function handler(
     }
 
     const userId = session.user.id;
+    console.log("休憩開始処理開始 - ユーザーID:", userId);
 
     // ユーザー状態を確認
     const userState = await prisma.userState.findUnique({
       where: { userId },
     });
 
+    console.log("現在のユーザー状態:", userState);
+
     if (userState?.currentState !== "checked_in") {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "出社状態でないと休憩を開始できません",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "出社状態でないと休憩を開始できません",
+      });
     }
 
-    // 今日の記録を取得
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // 現在の日時
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-    const record = await prisma.attendanceRecord.findFirst({
+    console.log("現在の日時:", now);
+    console.log("今日の日付:", today);
+
+    let record = await prisma.attendanceRecord.findFirst({
       where: {
         userId,
         date: {
@@ -59,11 +63,26 @@ export default async function handler(
         .json({ success: false, message: "出社記録が見つかりません" });
     }
 
+    // 明示的なチェックを追加
+    if (!record.checkIn) {
+      console.log("出社時間が記録されていません");
+
+      // 出社時間がない場合は記録
+      record = await prisma.attendanceRecord.update({
+        where: { id: record.id },
+        data: {
+          checkIn: now, // 現在時刻を出社時間として設定
+        },
+      });
+
+      console.log("出社時間を追加しました:", record);
+    }
+
     // 休憩開始時間を記録
     await prisma.attendanceRecord.update({
       where: { id: record.id },
       data: {
-        breakStart: new Date(),
+        breakStart: now,
       },
     });
 
@@ -72,9 +91,11 @@ export default async function handler(
       where: { userId },
       data: {
         currentState: "on_break",
-        lastUpdated: new Date(),
+        lastUpdated: now,
       },
     });
+
+    console.log("休憩開始処理完了");
 
     return res.status(200).json({
       success: true,

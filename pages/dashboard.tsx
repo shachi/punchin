@@ -24,7 +24,9 @@ export default function Dashboard() {
   const [record, setRecord] = useState<AttendanceRecord | null>(null);
   const [message, setMessage] = useState({ text: "", type: "" });
 
-  // ユーザーの勤怠状態を取得
+  // pages/dashboard.tsx の関連部分を修正
+
+  // 状態取得を強化
   const fetchUserState = async () => {
     try {
       const response = await fetch("/api/attendance/state");
@@ -33,9 +35,18 @@ export default function Dashboard() {
       }
 
       const data = await response.json();
+
       if (data.success) {
         setUserState(data.currentState || "not_checked_in");
         setRecord(data.record);
+
+        // 日付変更があった場合のメッセージ
+        if (data.dateChanged) {
+          setMessage({
+            text: "業務日が変わりました。新しい日の勤怠を記録できます。",
+            type: "info",
+          });
+        }
       } else {
         setMessage({ text: data.message, type: "error" });
       }
@@ -45,9 +56,62 @@ export default function Dashboard() {
     }
   };
 
+  // 出社ボタンクリック時の処理
+  const handleCheckIn = async () => {
+    try {
+      const response = await fetch("/api/attendance/check-in", {
+        method: "POST",
+      });
+
+      if (response.status === 400) {
+        // 400エラーの場合、状態を再取得して同期
+        const errorData = await response.json();
+        setMessage({ text: errorData.message, type: "error" });
+        fetchUserState(); // 状態を再取得して同期
+        return;
+      }
+
+      const data = await response.json();
+
+      if (data.success) {
+        setUserState(data.currentState);
+        setMessage({ text: data.message, type: "success" });
+        fetchUserState(); // 変更後の最新状態を取得
+      } else {
+        setMessage({ text: data.message, type: "error" });
+      }
+    } catch (error) {
+      console.error(error);
+      setMessage({ text: "エラーが発生しました", type: "error" });
+    }
+  };
+
+  // 日付変更の検出用タイマー
+  useEffect(() => {
+    // 1分ごとに確認
+    const timer = setInterval(() => {
+      const now = new Date();
+      // AM4:00になったら状態を再取得
+      if (now.getHours() === 4 && now.getMinutes() === 0) {
+        fetchUserState();
+        setMessage({
+          text: "業務日が変わりました。新しい日の勤怠を記録できます。",
+          type: "info",
+        });
+      }
+    }, 60000); // 1分ごと
+
+    return () => clearInterval(timer);
+  }, []);
+
+  // ページ読み込み時と定期的な状態更新
   useEffect(() => {
     if (session) {
       fetchUserState();
+
+      // 5分ごとに状態を更新
+      const refreshInterval = setInterval(fetchUserState, 300000);
+      return () => clearInterval(refreshInterval);
     }
   }, [session]);
 
@@ -84,7 +148,13 @@ export default function Dashboard() {
 
           {message.text && (
             <div
-              className={`mb-6 p-4 rounded-md ${message.type === "success" ? "bg-green-100 text-green-800 border-l-4 border-green-500" : "bg-red-100 text-red-800 border-l-4 border-red-500"}`}
+              className={`mb-6 p-4 rounded-md ${
+                message.type === "success"
+                  ? "bg-green-100 text-green-800 border-l-4 border-green-500"
+                  : message.type === "error"
+                    ? "bg-red-100 text-red-800 border-l-4 border-red-500"
+                    : "bg-blue-100 text-blue-800 border-l-4 border-blue-500"
+              }`}
             >
               {message.text}
             </div>

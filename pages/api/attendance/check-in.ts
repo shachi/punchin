@@ -25,37 +25,83 @@ export default async function handler(
 
     const userId = session.user.id;
 
+    // 現在の業務日を取得
+    const now = new Date();
+    const businessDate = new Date(now);
+    if (now.getHours() < 4) {
+      businessDate.setDate(businessDate.getDate() - 1);
+    }
+    businessDate.setHours(0, 0, 0, 0);
+
     // ユーザー状態を確認
     const userState = await prisma.userState.findUnique({
       where: { userId },
     });
 
-    if (userState?.currentState !== "not_checked_in") {
+    // 状態の最終更新日を業務日に変換
+    let lastUpdatedDate = null;
+    if (userState?.lastUpdated) {
+      lastUpdatedDate = new Date(userState.lastUpdated);
+      if (lastUpdatedDate.getHours() < 4) {
+        lastUpdatedDate.setDate(lastUpdatedDate.getDate() - 1);
+      }
+      lastUpdatedDate.setHours(0, 0, 0, 0);
+    }
+
+    // 日付が変わっている場合は状態をリセット
+    if (lastUpdatedDate && businessDate.getTime() > lastUpdatedDate.getTime()) {
+      console.log("日付が変わっているため状態をリセットします");
+      await prisma.userState.update({
+        where: { userId },
+        data: {
+          currentState: "not_checked_in",
+          lastUpdated: now,
+        },
+      });
+    }
+
+    // 最新の状態を再取得
+    const currentUserState = await prisma.userState.findUnique({
+      where: { userId },
+    });
+
+    if (
+      currentUserState?.currentState !== "not_checked_in" &&
+      currentUserState?.currentState !== "checked_out"
+    ) {
       return res
         .status(400)
         .json({ success: false, message: "既に出社済みです" });
     }
 
-    // 今日の日付
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // 業務日の範囲を設定
+    const businessDayStart = new Date(businessDate);
+    const businessDayEnd = new Date(businessDate);
+    businessDayEnd.setDate(businessDayEnd.getDate() + 1);
+    businessDayEnd.setHours(3, 59, 59, 999);
 
-    // 既存の記録を確認または作成
+    // 既存の記録を確認
     let record = await prisma.attendanceRecord.findFirst({
       where: {
         userId,
         date: {
-          gte: today,
-          lt: new Date(today.getTime() + 24 * 60 * 60 * 1000),
+          gte: businessDayStart,
+          lte: businessDayEnd,
         },
       },
     });
 
+    console.log("既存の記録:", record);
+
+    // 記録がなければ作成
     if (!record) {
+      console.log("記録が見つからないため新規作成します");
       record = await prisma.attendanceRecord.create({
         data: {
           userId,
-          date: today,
+          date: businessDayStart,
+          checkIn: now,
+          isAbsent: false,
         },
       });
     }
@@ -64,19 +110,23 @@ export default async function handler(
     await prisma.attendanceRecord.update({
       where: { id: record.id },
       data: {
-        checkIn: new Date(),
+        checkIn: now,
         isAbsent: false,
       },
     });
+
+    console.log("更新/作成された記録:", record);
 
     // ユーザー状態を更新
     await prisma.userState.update({
       where: { userId },
       data: {
         currentState: "checked_in",
-        lastUpdated: new Date(),
+        lastUpdated: now,
       },
     });
+
+    console.log("出社処理完了");
 
     return res.status(200).json({
       success: true,
