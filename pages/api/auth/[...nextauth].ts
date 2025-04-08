@@ -64,6 +64,20 @@ export const authOptions: NextAuthOptions = {
       }
       return session;
     },
+    async redirect({ url, baseUrl }) {
+      // 現在のURLがbaseUrlでなく、別のURLである場合
+      const currentHost =
+        typeof window !== "undefined" ? window.location.origin : baseUrl;
+
+      // ログアウト後は常にログインページへ
+      if (url.startsWith("/signout") || url.startsWith("/api/auth/signout")) {
+        return `${currentHost}/login`;
+      }
+      // 通常のRedirectルール
+      if (url.startsWith(baseUrl)) return url;
+      if (url.startsWith("/")) return `${baseUrl}${url}`;
+      return baseUrl;
+    },
   },
   pages: {
     signIn: "/login",

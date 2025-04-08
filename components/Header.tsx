@@ -77,11 +77,19 @@ export default function Header() {
                   )}
                   <li>
                     <button
-                      onClick={() =>
+                      onClick={() => {
+                        // 現在の完全なURLを取得（プロキシ後のURLを含む）
+                        const currentOrigin = window.location.origin;
+                        const loginPath = `${currentOrigin}/login`;
+
+                        // console.log で確認用
+                        console.log("現在のオリジン:", currentOrigin);
+                        console.log("リダイレクト先:", loginPath);
+
                         signOut({
-                          callbackUrl: `${window.location.origin}/login`,
-                        })
-                      }
+                          callbackUrl: loginPath,
+                        });
+                      }}
                       className="bg-white text-indigo-600 px-4 py-1 rounded-md hover:bg-indigo-50 transition duration-150"
                     >
                       ログアウト
