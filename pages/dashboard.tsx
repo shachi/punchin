@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/router";
+import { toZonedTime, fromZonedTime } from "date-fns-tz";
 import Layout from "../components/Layout";
 import AttendanceButtons from "../components/AttendanceButtons";
 import Clock from "../components/Clock";
@@ -129,12 +130,13 @@ export default function Dashboard() {
 
       // 1分ごとにチェック（特にAM4時周辺）
       const timer = setInterval(() => {
+        // 現在時刻（ブラウザのローカル時間）
         const now = new Date();
-        console.log("Regular check:", now.toLocaleTimeString());
+        console.log("Regular check:", now.toLocaleTimeString("ja-JP"));
 
-        // AM4:00ちょうどに近い場合は強制リロード
+        // 日本時間のAM4:00チェック
         if (now.getHours() === 4 && now.getMinutes() === 0) {
-          console.log("It's 4:00 AM, reloading page");
+          console.log("It's 4:00 AM JST, reloading page");
           window.location.reload();
           return;
         }

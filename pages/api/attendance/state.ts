@@ -2,6 +2,7 @@
 import { NextApiRequest, NextApiResponse } from "next";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
+import { toZonedTime, fromZonedTime } from "date-fns-tz";
 import { prisma } from "../../../lib/prisma";
 
 export default async function handler(
@@ -26,17 +27,24 @@ export default async function handler(
     const userId = session.user.id;
     console.log("状態取得 - ユーザーID:", userId);
 
-    // 現在の日時と業務日を取得
+    // 現在の日時と業務日を取得（日本時間ベース）
     const now = new Date();
-    const businessDate = new Date(now);
+    const jstNow = toZonedTime(now, "Asia/Tokyo");
 
-    if (now.getHours() < 4) {
-      businessDate.setDate(businessDate.getDate() - 1);
+    // 日本時間で業務日を判定
+    const jstBusinessDate = new Date(jstNow);
+
+    if (jstNow.getHours() < 4) {
+      jstBusinessDate.setDate(jstBusinessDate.getDate() - 1);
     }
-    businessDate.setHours(0, 0, 0, 0);
+    jstBusinessDate.setHours(0, 0, 0, 0);
 
-    console.log("現在時刻:", now);
-    console.log("業務日:", businessDate);
+    // JSTの業務日をUTCに変換（データベース比較用）
+    const businessDate = fromZonedTime(jstBusinessDate, "Asia/Tokyo");
+
+    console.log("現在時刻(JST):", jstNow);
+    console.log("業務日(JST):", jstBusinessDate);
+    console.log("業務日(UTC):", businessDate);
 
     // ユーザー状態を取得
     const userState = await prisma.userState.findUnique({
@@ -63,16 +71,24 @@ export default async function handler(
       });
     }
 
-    // 状態の最終更新日の業務日を計算
+    // 状態の最終更新日の業務日を計算（JSTベース）
     let lastUpdatedBusinessDate = null;
-    if (userState.lastUpdated) {
+    if (userState?.lastUpdated) {
       const lastUpdated = new Date(userState.lastUpdated);
-      lastUpdatedBusinessDate = new Date(lastUpdated);
+      const jstLastUpdated = toZonedTime(lastUpdated, "Asia/Tokyo");
 
-      if (lastUpdated.getHours() < 4) {
+      lastUpdatedBusinessDate = new Date(jstLastUpdated);
+
+      if (jstLastUpdated.getHours() < 4) {
         lastUpdatedBusinessDate.setDate(lastUpdatedBusinessDate.getDate() - 1);
       }
       lastUpdatedBusinessDate.setHours(0, 0, 0, 0);
+
+      // JSTの最終更新業務日をUTCに変換（比較用）
+      lastUpdatedBusinessDate = fromZonedTime(
+        lastUpdatedBusinessDate,
+        "Asia/Tokyo",
+      );
     }
 
     console.log("最終更新業務日:", lastUpdatedBusinessDate);

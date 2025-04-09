@@ -2,6 +2,7 @@
 import { NextApiRequest, NextApiResponse } from "next";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
+import { toZonedTime, fromZonedTime } from "date-fns-tz";
 import { prisma } from "../../../lib/prisma";
 
 export default async function handler(
@@ -31,17 +32,26 @@ export default async function handler(
     });
 
     if (userState?.currentState !== "on_break") {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "休憩中でないと休憩を終了できません",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "休憩中でないと休憩を終了できません",
+      });
     }
 
-    // 今日の記録を取得
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // 現在の日時と業務日を取得（日本時間ベース）
+    const now = new Date();
+    const jstNow = toZonedTime(now, "Asia/Tokyo");
+
+    // 日本時間で業務日を判定
+    const jstBusinessDate = new Date(jstNow);
+
+    if (jstNow.getHours() < 4) {
+      jstBusinessDate.setDate(jstBusinessDate.getDate() - 1);
+    }
+    jstBusinessDate.setHours(0, 0, 0, 0);
+
+    // JSTの業務日をUTCに変換（データベース比較用）
+    const today = fromZonedTime(jstBusinessDate, "Asia/Tokyo");
 
     const record = await prisma.attendanceRecord.findFirst({
       where: {

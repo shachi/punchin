@@ -2,6 +2,7 @@
 import { NextApiRequest, NextApiResponse } from "next";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
+import { toZonedTime, fromZonedTime } from "date-fns-tz";
 import { prisma } from "../../../lib/prisma";
 
 export default async function handler(
@@ -40,9 +41,20 @@ export default async function handler(
       });
     }
 
-    // 現在の日時
+    // 現在の日時と業務日を取得（日本時間ベース）
     const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const jstNow = toZonedTime(now, "Asia/Tokyo");
+
+    // 日本時間で業務日を判定
+    const jstBusinessDate = new Date(jstNow);
+
+    if (jstNow.getHours() < 4) {
+      jstBusinessDate.setDate(jstBusinessDate.getDate() - 1);
+    }
+    jstBusinessDate.setHours(0, 0, 0, 0);
+
+    // JSTの業務日をUTCに変換（データベース比較用）
+    const today = fromZonedTime(jstBusinessDate, "Asia/Tokyo");
 
     console.log("現在の日時:", now);
     console.log("今日の日付:", today);

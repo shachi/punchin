@@ -2,6 +2,7 @@
 import { NextApiRequest, NextApiResponse } from "next";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
+import { toZonedTime, fromZonedTime } from "date-fns-tz";
 import { prisma } from "../../../lib/prisma";
 
 export default async function handler(
@@ -25,14 +26,20 @@ export default async function handler(
 
     const userId = session.user.id;
 
-    // 業務日の取得
+    // 現在の日時と業務日を取得（日本時間ベース）
     const now = new Date();
-    const businessDate = new Date(now);
+    const jstNow = toZonedTime(now, "Asia/Tokyo");
 
-    if (now.getHours() < 4) {
-      businessDate.setDate(businessDate.getDate() - 1);
+    // 日本時間で業務日を判定
+    const jstBusinessDate = new Date(jstNow);
+
+    if (jstNow.getHours() < 4) {
+      jstBusinessDate.setDate(jstBusinessDate.getDate() - 1);
     }
-    businessDate.setHours(0, 0, 0, 0);
+    jstBusinessDate.setHours(0, 0, 0, 0);
+
+    // JSTの業務日をUTCに変換（データベース比較用）
+    const businessDate = fromZonedTime(jstBusinessDate, "Asia/Tokyo");
 
     // まず状態をリセットするかチェック
     const userState = await prisma.userState.findUnique({
