@@ -4,6 +4,7 @@ import { useSession } from "next-auth/react";
 import { useRouter } from "next/router";
 import Layout from "../components/Layout";
 import { format } from "date-fns";
+import { toZonedTime } from "date-fns-tz";
 import { ja } from "date-fns/locale";
 
 interface AttendanceRecord {
@@ -94,12 +95,16 @@ export default function AdminDashboard() {
   // 時刻のフォーマット
   const formatTime = (timeString: string | null) => {
     if (!timeString) return "-";
-    return format(new Date(timeString), "HH:mm:ss");
+    const date = new Date(timeString);
+    const jstDate = toZonedTime(date, "Asia/Tokyo");
+    return format(jstDate, "HH:mm:ss");
   };
 
   // 日付のフォーマット
   const formatDate = (dateString: string) => {
-    return format(new Date(dateString), "yyyy/MM/dd (E)", { locale: ja });
+    const date = new Date(dateString);
+    const jstDate = toZonedTime(date, "Asia/Tokyo");
+    return format(jstDate, "yyyy/MM/dd (E)", { locale: ja });
   };
 
   return (

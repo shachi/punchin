@@ -3,7 +3,8 @@ import { NextApiRequest, NextApiResponse } from "next";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
 import { prisma } from "../../../lib/prisma";
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
+import { toZonedTime } from "date-fns-tz";
 
 export default async function handler(
   req: NextApiRequest,
@@ -72,24 +73,27 @@ export default async function handler(
     // CSVデータの作成
     let csv = "日付,氏名,出社時間,退社時間,休憩時間(分),勤務時間,欠勤\n";
 
+    // タイムゾーン指定
+    const timeZone = "Asia/Tokyo";
+
     records.forEach((record) => {
       // 休憩時間の計算 (分)
       let breakDuration = "-";
       if (record.breakStart && record.breakEnd) {
+        const breakStartTime = new Date(record.breakStart);
+        const breakEndTime = new Date(record.breakEnd);
         const durationMinutes =
-          (new Date(record.breakEnd).getTime() -
-            new Date(record.breakStart).getTime()) /
-          (1000 * 60);
+          (breakEndTime.getTime() - breakStartTime.getTime()) / (1000 * 60);
         breakDuration = Math.round(durationMinutes).toString();
       }
 
       // 総勤務時間の計算 (時間)
       let totalWorkHours = "-";
       if (record.checkIn && record.checkOut) {
+        const checkInTime = new Date(record.checkIn);
+        const checkOutTime = new Date(record.checkOut);
         const totalMinutes =
-          (new Date(record.checkOut).getTime() -
-            new Date(record.checkIn).getTime()) /
-          (1000 * 60);
+          (checkOutTime.getTime() - checkInTime.getTime()) / (1000 * 60);
         const breakMinutes =
           record.breakStart && record.breakEnd
             ? (new Date(record.breakEnd).getTime() -
@@ -100,20 +104,24 @@ export default async function handler(
         totalWorkHours = hours.toFixed(2);
       }
 
-      // 日付フォーマット
-      const date = format(record.date, "yyyy/MM/dd");
+      // 日付を日本時間でフォーマット
+      const recordDate = new Date(record.date);
+      const jstDate = toZonedTime(recordDate, timeZone);
+      const date = format(jstDate, "yyyy/MM/dd");
 
-      // 時刻フォーマット
-      const formatTime = (time: Date | null) => {
-        return time ? format(time, "HH:mm:ss") : "-";
+      // 時刻を日本時間でフォーマット
+      const formatTimeToJST = (time: Date | null) => {
+        if (!time) return "-";
+        const jstTime = toZonedTime(time, timeZone);
+        return format(jstTime, "HH:mm:ss");
       };
 
       // CSVの行を作成
       const row = [
         date,
         record.user.name,
-        formatTime(record.checkIn),
-        formatTime(record.checkOut),
+        formatTimeToJST(record.checkIn),
+        formatTimeToJST(record.checkOut),
         breakDuration,
         totalWorkHours,
         record.isAbsent ? "はい" : "いいえ",
