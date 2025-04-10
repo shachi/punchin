@@ -133,38 +133,56 @@ export default async function handler(
 
     // レスポンス用にデータを加工
     const formattedRecords = records.map((record) => {
-      // 休憩時間の計算 (分)
-      let breakDuration = null;
-      if (record.breakStart && record.breakEnd) {
-        breakDuration =
-          (new Date(record.breakEnd).getTime() -
-            new Date(record.breakStart).getTime()) /
-          (1000 * 60);
-      }
+      try {
+        // 休憩時間の計算 (分)
+        let breakDuration = null;
+        if (record.breakStart && record.breakEnd) {
+          breakDuration =
+            (new Date(record.breakEnd).getTime() -
+              new Date(record.breakStart).getTime()) /
+            (1000 * 60);
+        }
 
-      // 総勤務時間の計算 (時間)
-      let totalWorkHours = null;
-      if (record.checkIn && record.checkOut) {
-        const totalMinutes =
-          (new Date(record.checkOut).getTime() -
-            new Date(record.checkIn).getTime()) /
-          (1000 * 60);
-        totalWorkHours = (totalMinutes - (breakDuration || 0)) / 60;
-      }
+        // 総勤務時間の計算 (時間)
+        let totalWorkHours = null;
+        if (record.checkIn && record.checkOut) {
+          const totalMinutes =
+            (new Date(record.checkOut).getTime() -
+              new Date(record.checkIn).getTime()) /
+            (1000 * 60);
+          totalWorkHours = (totalMinutes - (breakDuration || 0)) / 60;
+        }
 
-      return {
-        id: record.id,
-        userId: record.userId,
-        userName: record.user.name,
-        date: record.date.toISOString(),
-        checkIn: record.checkIn?.toISOString() || null,
-        breakStart: record.breakStart?.toISOString() || null,
-        breakEnd: record.breakEnd?.toISOString() || null,
-        checkOut: record.checkOut?.toISOString() || null,
-        isAbsent: record.isAbsent,
-        breakDuration,
-        totalWorkHours,
-      };
+        return {
+          id: record.id,
+          userId: record.userId,
+          userName: record.user.name,
+          date: record.date ? record.date.toISOString() : null,
+          checkIn: record.checkIn?.toISOString() || null,
+          breakStart: record.breakStart?.toISOString() || null,
+          breakEnd: record.breakEnd?.toISOString() || null,
+          checkOut: record.checkOut?.toISOString() || null,
+          isAbsent: record.isAbsent,
+          breakDuration,
+          totalWorkHours,
+        };
+      } catch (error) {
+        console.error("Record formatting error:", error, record);
+        // エラー時も最低限の情報を返す
+        return {
+          id: record.id,
+          userId: record.userId,
+          userName: record.user?.name || "不明",
+          date: null,
+          checkIn: null,
+          breakStart: null,
+          breakEnd: null,
+          checkOut: null,
+          isAbsent: record.isAbsent || false,
+          breakDuration: null,
+          totalWorkHours: null,
+        };
+      }
     });
 
     return res.status(200).json({

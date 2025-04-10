@@ -119,11 +119,21 @@ export default function AdminDashboard() {
 
   // 月が変更されたら日付範囲を更新し、1ページ目から表示
   useEffect(() => {
-    const firstDay = dayjs(currentMonth).startOf("date");
-    const lastDay = dayjs(currentMonth).endOf("date");
-    setStartDate(dayjs(firstDay).format("yyyy-MM-dd"));
-    setEndDate(dayjs(lastDay).format("yyyy-MM-dd"));
-    setCurrentPage(1); // 月が変わったら1ページ目に戻す
+    try {
+      const firstDay = dayjs(currentMonth).startOf("month");
+      const lastDay = dayjs(currentMonth).endOf("month");
+      console.log("月の初日:", firstDay.format("YYYY-MM-DD"));
+      console.log("月の最終日:", lastDay.format("YYYY-MM-DD"));
+      setStartDate(firstDay.format("YYYY-MM-DD"));
+      setEndDate(lastDay.format("YYYY-MM-DD"));
+      setCurrentPage(1); // 月が変わったら1ページ目に戻す
+    } catch (error) {
+      console.error("Date format error:", error);
+      // エラー時はデフォルト値を設定
+      const now = dayjs();
+      setStartDate(now.startOf("month").format("YYYY-MM-DD"));
+      setEndDate(now.endOf("month").format("YYYY-MM-DD"));
+    }
   }, [currentMonth]);
 
   // 日付範囲が変更されたら記録を取得
@@ -233,16 +243,26 @@ export default function AdminDashboard() {
     window.location.href = `/api/admin/export-csv?startDate=${startDate}&endDate=${endDate}`;
   };
 
-  // 時刻のフォーマット
+  // 時刻のフォーマット - エラーハンドリングを追加
   const formatTime = (timeString: string | null) => {
     if (!timeString) return "-";
-    const date = new Date(timeString);
-    return dayjs(date).format("HH:mm:ss");
+    try {
+      return dayjs(timeString).format("HH:mm:ss");
+    } catch (error) {
+      console.error("Time format error:", error, timeString);
+      return "-";
+    }
   };
 
-  // 日付フォーマット
+  // 日付のフォーマット - エラーハンドリングを追加
   const formatDate = (dateString: string) => {
-    return dayjs(dateString).format("YYYY/MM/DD (ddd)");
+    if (!dateString) return "-";
+    try {
+      return dayjs(dateString).format("YYYY/MM/DD (ddd)");
+    } catch (error) {
+      console.error("Date format error:", error, dateString);
+      return "-";
+    }
   };
 
   // 表示時のフォーマット
