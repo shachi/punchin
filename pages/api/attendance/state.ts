@@ -147,9 +147,23 @@ export default async function handler(
       lastUpdated: now.toISOString(), // 最終更新時刻も返す
     });
   } catch (error) {
-    console.error("Error fetching user state:", error);
-    return res
-      .status(500)
-      .json({ success: false, message: "サーバーエラーが発生しました" });
+    // エラーログをより詳細に
+    console.error("Error processing state request:", error);
+    console.error(
+      "Error stack:",
+      error instanceof Error ? error.stack : "No stack trace",
+    );
+
+    // もっと具体的なエラーメッセージを返す
+    const errorMessage =
+      error instanceof Error
+        ? `サーバーエラー: ${error.message}`
+        : "サーバーエラーが発生しました";
+
+    return res.status(500).json({
+      success: false,
+      message: errorMessage,
+      error: process.env.NODE_ENV === "development" ? String(error) : undefined,
+    });
   }
 }

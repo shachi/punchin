@@ -3,7 +3,13 @@ import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/router";
 import Layout from "../components/Layout";
-import { format } from "date-fns";
+import {
+  format,
+  startOfMonth,
+  endOfMonth,
+  subMonths,
+  addMonths,
+} from "date-fns";
 import { toZonedTime } from "date-fns-tz";
 import { ja } from "date-fns/locale";
 
@@ -24,34 +30,60 @@ interface AttendanceRecord {
 export default function AdminDashboard() {
   const router = useRouter();
   const { data: session, status } = useSession();
+  // 現在の年月
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  // 選択された期間の開始日・終了日
   const [startDate, setStartDate] = useState<string>(() => {
-    const today = new Date();
-    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+    const firstDay = startOfMonth(currentMonth);
     return format(firstDay, "yyyy-MM-dd");
   });
 
   const [endDate, setEndDate] = useState<string>(() => {
-    const today = new Date();
-    return format(today, "yyyy-MM-dd");
+    const lastDay = endOfMonth(currentMonth);
+    return format(lastDay, "yyyy-MM-dd");
   });
 
+  // 既存の状態変数
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const fetchRecords = async () => {
+  // ページング用の状態を追加
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [total, setTotal] = useState(0);
+
+  // 月が変更されたら日付範囲を更新
+  useEffect(() => {
+    const firstDay = startOfMonth(currentMonth);
+    const lastDay = endOfMonth(currentMonth);
+    setStartDate(format(firstDay, "yyyy-MM-dd"));
+    setEndDate(format(lastDay, "yyyy-MM-dd"));
+  }, [currentMonth]);
+
+  // 前月へ
+  const goToPreviousMonth = () => {
+    setCurrentMonth((prevMonth) => subMonths(prevMonth, 1));
+  };
+
+  // 翌月へ
+  const goToNextMonth = () => {
+    setCurrentMonth((prevMonth) => addMonths(prevMonth, 1));
+  };
+
+  const fetchRecords = async (page = currentPage) => {
     setLoading(true);
     setError("");
 
     try {
-      // コンソールでリクエストURLを確認
-      const url = `/api/admin/attendance?startDate=${startDate}&endDate=${endDate}`;
+      // URLにページングパラメータを追加
+      const url = `/api/admin/attendance?startDate=${startDate}&endDate=${endDate}&page=${page}&pageSize=${pageSize}`;
       console.log("Fetching records from:", url);
 
       const response = await fetch(url);
 
       if (!response.ok) {
-        // レスポンスのステータスとテキストをログに出力
         const errorText = await response.text();
         console.error("API error:", response.status, errorText);
         throw new Error(`勤怠記録の取得に失敗しました (${response.status})`);
@@ -61,6 +93,13 @@ export default function AdminDashboard() {
 
       if (data.success) {
         setRecords(data.records);
+
+        // ページング情報を更新
+        if (data.pagination) {
+          setCurrentPage(data.pagination.currentPage);
+          setTotalPages(data.pagination.totalPages);
+          setTotal(data.pagination.total);
+        }
       } else {
         setError(data.message || "データの取得に失敗しました");
       }
@@ -74,6 +113,114 @@ export default function AdminDashboard() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // ページ変更ハンドラ
+  const handlePageChange = (newPage: number) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+      setCurrentPage(newPage);
+      fetchRecords(newPage);
+    }
+  };
+
+  // 月が変更されたら日付範囲を更新し、1ページ目から表示
+  useEffect(() => {
+    const firstDay = startOfMonth(currentMonth);
+    const lastDay = endOfMonth(currentMonth);
+    setStartDate(format(firstDay, "yyyy-MM-dd"));
+    setEndDate(format(lastDay, "yyyy-MM-dd"));
+    setCurrentPage(1); // 月が変わったら1ページ目に戻す
+  }, [currentMonth]);
+
+  // 日付範囲が変更されたら記録を取得
+  useEffect(() => {
+    if (session?.user?.isAdmin) {
+      fetchRecords(1);
+    }
+  }, [startDate, endDate, session]);
+
+  // ページネーションコンポーネント
+  const Pagination = () => {
+    const pageButtons = [];
+
+    // 表示するページボタンの範囲を決定
+    const maxPageButtons = 5;
+    let startPage = Math.max(1, currentPage - Math.floor(maxPageButtons / 2));
+    let endPage = Math.min(totalPages, startPage + maxPageButtons - 1);
+
+    if (endPage - startPage + 1 < maxPageButtons) {
+      startPage = Math.max(1, endPage - maxPageButtons + 1);
+    }
+
+    // 最初のページへのボタン
+    if (startPage > 1) {
+      pageButtons.push(
+        <button
+          key="first"
+          onClick={() => handlePageChange(1)}
+          className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-100"
+        >
+          最初
+        </button>,
+      );
+    }
+    // ページ番号ボタン
+    for (let i = startPage; i <= endPage; i++) {
+      pageButtons.push(
+        <button
+          key={i}
+          onClick={() => handlePageChange(i)}
+          className={`px-3 py-1 border rounded mx-1 ${
+            i === currentPage
+              ? "bg-blue-500 text-white"
+              : "border-gray-300 hover:bg-gray-100"
+          }`}
+        >
+          {i}
+        </button>,
+      );
+    }
+    // 最後のページへのボタン
+    if (endPage < totalPages) {
+      pageButtons.push(
+        <button
+          key="last"
+          onClick={() => handlePageChange(totalPages)}
+          className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-100"
+        >
+          最後
+        </button>,
+      );
+    }
+    return (
+      <div className="flex items-center justify-center mt-4 space-x-2">
+        <button
+          onClick={() => handlePageChange(currentPage - 1)}
+          disabled={currentPage === 1}
+          className={`px-3 py-1 border rounded ${
+            currentPage === 1
+              ? "text-gray-400 border-gray-200 cursor-not-allowed"
+              : "border-gray-300 hover:bg-gray-100"
+          }`}
+        >
+          前へ
+        </button>
+
+        {pageButtons}
+
+        <button
+          onClick={() => handlePageChange(currentPage + 1)}
+          disabled={currentPage === totalPages}
+          className={`px-3 py-1 border rounded ${
+            currentPage === totalPages
+              ? "text-gray-400 border-gray-200 cursor-not-allowed"
+              : "border-gray-300 hover:bg-gray-100"
+          }`}
+        >
+          次へ
+        </button>
+      </div>
+    );
   };
 
   useEffect(() => {
@@ -107,14 +254,72 @@ export default function AdminDashboard() {
     return format(jstDate, "yyyy/MM/dd (E)", { locale: ja });
   };
 
+  // CSVエクスポート（月単位）
+  const handleExportMonthlyCSV = () => {
+    window.location.href = `/api/admin/export-csv?startDate=${startDate}&endDate=${endDate}&type=monthly`;
+  };
+
   return (
     <Layout title="管理者ダッシュボード" requireAuth requireAdmin>
       <div className="max-w-6xl mx-auto">
         <div className="bg-white shadow-md rounded-lg p-6 mb-6">
-          <div className="flex justify-between items-center mb-6">
-            <h1 className="text-2xl font-bold text-gray-800">
-              勤怠管理 - 管理者ダッシュボード
-            </h1>
+          <h1 className="text-2xl font-bold text-gray-800 mb-4">
+            勤怠管理 - 管理者ダッシュボード
+          </h1>
+
+          {/* 月選択UI */}
+          <div className="mb-6">
+            <div className="flex items-center justify-between bg-gray-50 rounded-lg p-4">
+              <button
+                onClick={goToPreviousMonth}
+                className="text-blue-600 hover:text-blue-800"
+              >
+                ← 前月
+              </button>
+
+              <h2 className="text-xl font-semibold">
+                {format(currentMonth, "yyyy年M月", { locale: ja })}
+              </h2>
+
+              <button
+                onClick={goToNextMonth}
+                className="text-blue-600 hover:text-blue-800"
+              >
+                翌月 →
+              </button>
+            </div>
+          </div>
+
+          <div className="flex justify-between mb-4">
+            <div className="flex space-x-2">
+              <button
+                onClick={() => handlePageChange(currentPage)}
+                className="bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded"
+              >
+                表示更新
+              </button>
+
+              <button
+                onClick={handleExportMonthlyCSV}
+                className="bg-green-500 hover:bg-green-600 text-white font-medium py-2 px-4 rounded flex items-center"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-5 w-5 mr-1"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                  />
+                </svg>
+                月次CSVエクスポート
+              </button>
+            </div>
           </div>
 
           {error && (
@@ -156,7 +361,7 @@ export default function AdminDashboard() {
 
               <div className="flex items-end gap-2">
                 <button
-                  onClick={fetchRecords}
+                  onClick={() => handlePageChange(currentPage)}
                   className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-md transition duration-150 shadow-sm"
                   disabled={loading}
                 >
@@ -275,6 +480,16 @@ export default function AdminDashboard() {
             </div>
           </div>
         </div>
+      </div>
+      {/* テーブルの後にページネーションを追加 */}
+      <div className="mt-4">
+        {records.length > 0 && (
+          <div className="mt-2 text-sm text-gray-500 text-center">
+            全{total}件中 {(currentPage - 1) * pageSize + 1}～
+            {Math.min(currentPage * pageSize, total)}件を表示
+          </div>
+        )}
+        {totalPages > 1 && <Pagination />}
       </div>
     </Layout>
   );

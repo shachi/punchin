@@ -36,6 +36,11 @@ export default async function handler(
     const startDateStr = req.query.startDate || req.query.start_date;
     const endDateStr = req.query.endDate || req.query.end_date;
 
+    // ページングパラメータの取得
+    const page = parseInt((req.query.page as string) || "1", 10);
+    const pageSize = parseInt((req.query.pageSize as string) || "10", 10);
+    const skip = (page - 1) * pageSize;
+
     // 日付のバリデーション
     const start = startDateStr ? new Date(startDateStr as string) : new Date();
     start.setHours(0, 0, 0, 0);
@@ -44,13 +49,27 @@ export default async function handler(
     end.setHours(23, 59, 59, 999);
 
     console.log(`Date range: ${start.toISOString()} to ${end.toISOString()}`);
+    console.log(`Pagination: page=${page}, pageSize=${pageSize}, skip=${skip}`);
 
     // 日付が無効な場合のデフォルト値設定
     if (isNaN(start.getTime())) {
       start.setDate(1); // 月初
     }
 
-    // 勤怠記録の取得
+    // 総件数を取得
+    const total = await prisma.attendanceRecord.count({
+      where: {
+        date: {
+          gte: start,
+          lte: end,
+        },
+      },
+    });
+
+    // ページ数を計算
+    const totalPages = Math.ceil(total / pageSize);
+
+    // 勤怠記録の取得（ページング適用）
     const records = await prisma.attendanceRecord.findMany({
       where: {
         date: {
@@ -68,9 +87,11 @@ export default async function handler(
         },
       },
       orderBy: [{ date: "desc" }, { userId: "asc" }],
+      skip: skip,
+      take: pageSize,
     });
 
-    console.log(`Found ${records.length} records`);
+    console.log(`Found ${records.length} records (total: ${total})`);
 
     // レスポンス用にデータを加工
     const formattedRecords = records.map((record) => {
@@ -111,6 +132,14 @@ export default async function handler(
     return res.status(200).json({
       success: true,
       records: formattedRecords,
+      pagination: {
+        total,
+        totalPages,
+        currentPage: page,
+        pageSize,
+        hasNext: page < totalPages,
+        hasPrev: page > 1,
+      },
     });
   } catch (error) {
     console.error("Error fetching attendance records:", error);

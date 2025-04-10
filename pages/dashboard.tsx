@@ -38,13 +38,28 @@ export default function Dashboard() {
     }
   }, [status, router]);
   // 状態取得を強化
-  const fetchUserState = async () => {
+  const fetchUserState = async (retryCount = 0) => {
     try {
       console.log("Fetching user state...");
+      const timestamp = new Date().getTime();
       const response = await fetch("/api/attendance/state");
 
       if (!response.ok) {
-        throw new Error("状態の取得に失敗しました");
+        // エラーレスポンスの内容を確認
+        const errorText = await response.text();
+        console.error("API error response:", errorText);
+
+        // 一時的なエラー（502, 503, 504）の場合はリトライ
+        if ([502, 503, 504].includes(response.status) && retryCount < 3) {
+          console.log(
+            `一時的なエラーが発生しました(${response.status})。再試行します(${retryCount + 1}/3)...`,
+          );
+
+          // 少し待ってからリトライ
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          return fetchUserState(retryCount + 1);
+        }
+        throw new Error(`状態の取得に失敗しました - ${response.status}`);
       }
 
       const data = await response.json();
@@ -62,6 +77,10 @@ export default function Dashboard() {
             type: "info",
           });
         }
+        // エラーメッセージがあれば削除
+        if (message.type === "error") {
+          setMessage({ text: "", type: "" });
+        }
       } else {
         setMessage({
           text: data.message || "状態の取得に失敗しました",
@@ -70,7 +89,28 @@ export default function Dashboard() {
       }
     } catch (error) {
       console.error("Error fetching state:", error);
-      setMessage({ text: "エラーが発生しました", type: "error" });
+
+      // リトライロジック
+      if (retryCount < 3) {
+        console.log(
+          `エラーが発生しました。再試行します(${retryCount + 1}/3)...`,
+        );
+        setMessage({
+          text: `状態の取得中にエラーが発生しました。再試行中...(${retryCount + 1}/3)`,
+          type: "warning",
+        });
+
+        // 少し待ってからリトライ
+        setTimeout(
+          () => fetchUserState(retryCount + 1),
+          3000 * (retryCount + 1),
+        );
+      } else {
+        setMessage({
+          text: "状態の取得に失敗しました。ページを更新してください。",
+          type: "error",
+        });
+      }
     }
   };
 
@@ -190,7 +230,6 @@ export default function Dashboard() {
           <h1 className="text-2xl font-bold text-gray-800 mb-4">
             勤怠管理ダッシュボード
           </h1>
-
           {message.text && (
             <div
               className={`mb-6 p-4 rounded-md ${
@@ -198,13 +237,93 @@ export default function Dashboard() {
                   ? "bg-green-100 text-green-800 border-l-4 border-green-500"
                   : message.type === "error"
                     ? "bg-red-100 text-red-800 border-l-4 border-red-500"
-                    : "bg-blue-100 text-blue-800 border-l-4 border-blue-500"
+                    : message.type === "warning"
+                      ? "bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500"
+                      : "bg-blue-100 text-blue-800 border-l-4 border-blue-500"
               }`}
             >
-              {message.text}
+              <div className="flex justify-between items-center">
+                <div className="flex items-center">
+                  {message.type === "success" && (
+                    <svg
+                      className="h-5 w-5 mr-2 text-green-500"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M5 13l4 4L19 7"
+                      />
+                    </svg>
+                  )}
+                  {message.type === "error" && (
+                    <svg
+                      className="h-5 w-5 mr-2 text-red-500"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  )}
+                  {message.type === "warning" && (
+                    <svg
+                      className="h-5 w-5 mr-2 text-yellow-500"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                      />
+                    </svg>
+                  )}
+                  {message.type === "info" && (
+                    <svg
+                      className="h-5 w-5 mr-2 text-blue-500"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                  )}
+                  {message.text}
+                </div>
+
+                {message.type === "error" && (
+                  <button
+                    onClick={() => {
+                      setMessage({
+                        text: "接続を試みています...",
+                        type: "info",
+                      });
+                      fetchUserState(0);
+                    }}
+                    className="ml-4 px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600"
+                  >
+                    再接続
+                  </button>
+                )}
+              </div>
             </div>
           )}
-
           <div className="bg-gray-50 rounded-lg p-6 mb-6 text-center">
             <Clock />
 
@@ -245,7 +364,6 @@ export default function Dashboard() {
               </div>
             </div>
           </div>
-
           {/* ここでコンポーネントが表示されているか確認 */}
           <div className="bg-gray-50 rounded-lg p-6 mb-6">
             <h2 className="text-lg font-medium text-gray-700 mb-4">勤怠登録</h2>
@@ -329,31 +447,68 @@ export default function Dashboard() {
               {userState === "checked_in" && (
                 <button
                   onClick={() => {
-                    fetch("/api/attendance/check-out", { method: "POST" })
-                      .then((res) => res.json())
-                      .then((data) => {
-                        if (data.success) {
-                          setUserState(data.currentState);
-                          setMessage({ text: data.message, type: "success" });
-                          fetchUserState();
-                        } else {
+                    // 確認ダイアログを表示
+                    if (confirm("本当に今日の業務終了でよろしいでしょうか？")) {
+                      fetch("/api/attendance/check-out", { method: "POST" })
+                        .then((res) => res.json())
+                        .then((data) => {
+                          if (data.success) {
+                            setUserState(data.currentState);
+                            setMessage({ text: data.message, type: "success" });
+                            fetchUserState();
+                          } else {
+                            setMessage({
+                              text: data.message || "処理に失敗しました",
+                              type: "error",
+                            });
+                          }
+                        })
+                        .catch((err) => {
+                          console.error(err);
                           setMessage({
-                            text: data.message || "処理に失敗しました",
+                            text: "エラーが発生しました",
                             type: "error",
                           });
-                        }
-                      })
-                      .catch((err) => {
-                        console.error(err);
-                        setMessage({
-                          text: "エラーが発生しました",
-                          type: "error",
                         });
-                      });
+                    }
                   }}
                   className="bg-green-500 hover:bg-green-600 text-white font-medium py-3 px-4 rounded-md transition duration-150 shadow-sm"
                 >
                   退社
+                </button>
+              )}
+              {/* 再出社ボタン */}
+              {userState === "checked_out" && (
+                <button
+                  onClick={() => {
+                    // 確認ダイアログを表示
+                    if (confirm("再出社でよろしいでしょうか？")) {
+                      fetch("/api/attendance/recheck-in", { method: "POST" })
+                        .then((res) => res.json())
+                        .then((data) => {
+                          if (data.success) {
+                            setUserState(data.currentState);
+                            setMessage({ text: data.message, type: "success" });
+                            fetchUserState();
+                          } else {
+                            setMessage({
+                              text: data.message || "処理に失敗しました",
+                              type: "error",
+                            });
+                          }
+                        })
+                        .catch((err) => {
+                          console.error(err);
+                          setMessage({
+                            text: "エラーが発生しました",
+                            type: "error",
+                          });
+                        });
+                    }
+                  }}
+                  className="bg-blue-500 hover:bg-blue-600 text-white font-medium py-3 px-4 rounded-md transition duration-150 shadow-sm"
+                >
+                  再出社
                 </button>
               )}
 
@@ -392,7 +547,6 @@ export default function Dashboard() {
               )}
             </div>
           </div>
-
           {record && (
             <div className="bg-gray-50 rounded-lg p-6">
               <h2 className="text-lg font-medium text-gray-700 mb-4">

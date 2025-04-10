@@ -70,8 +70,19 @@ export default async function handler(
       orderBy: [{ date: "desc" }, { user: { name: "asc" } }],
     });
 
-    // CSVデータの作成
-    let csv = "日付,氏名,出社時間,退社時間,休憩時間(分),勤務時間,欠勤\n";
+    // 月次CSVファイル名の作成
+    const fileName =
+      req.query.type === "monthly"
+        ? `monthly_attendance_${format(start, "yyyyMM")}.csv`
+        : `attendance_${format(start, "yyyyMMdd")}-${format(end, "yyyyMMdd")}.csv`;
+
+    // CSVヘッダーに月次情報を追加
+    const header =
+      req.query.type === "monthly"
+        ? `${format(start, "yyyy年M月")}の勤怠記録\n日付,氏名,出社時間,退社時間,休憩時間(分),勤務時間,欠勤\n`
+        : "日付,氏名,出社時間,退社時間,休憩時間(分),勤務時間,欠勤\n";
+
+    let csv = header;
 
     // タイムゾーン指定
     const timeZone = "Asia/Tokyo";
@@ -132,10 +143,7 @@ export default async function handler(
 
     // CSVファイルをレスポンスとして返す
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename=attendance_${format(start, "yyyyMMdd")}-${format(end, "yyyyMMdd")}.csv`,
-    );
+    res.setHeader("Content-Disposition", `attachment; filename=${fileName}`);
 
     return res.status(200).send(csv);
   } catch (error) {
