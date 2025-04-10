@@ -70,9 +70,14 @@ export default async function handler(
     });
 
     if (!record) {
-      return res
-        .status(400)
-        .json({ success: false, message: "出社記録が見つかりません" });
+      console.log("出社記録が見つからないため、新規作成します");
+      record = await prisma.attendanceRecord.create({
+        data: {
+          userId,
+          date: now,
+          checkIn: now,
+        },
+      });
     }
 
     // 明示的なチェックを追加
