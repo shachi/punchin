@@ -35,18 +35,37 @@ export default async function handler(
     const { startDate, endDate } = req.query;
 
     // 日付のバリデーション
-    const start = startDate ? new Date(startDate as string) : new Date();
-    const end = endDate ? new Date(endDate as string) : new Date();
+    let start, end;
 
-    // 日付が無効な場合のデフォルト値設定
-    if (isNaN(start.getTime())) {
-      start.setDate(1); // 月初
-    }
+    try {
+      // startDateとendDateのバリデーション
+      start = startDate
+        ? dayjs(startDate as string)
+            .startOf("day")
+            .toDate()
+        : dayjs().startOf("month").toDate();
+      end = endDate
+        ? dayjs(endDate as string)
+            .endOf("day")
+            .toDate()
+        : dayjs().endOf("day").toDate();
 
-    if (isNaN(end.getTime())) {
-      end.setHours(23, 59, 59, 999); // 今日の終わり
-    } else {
-      end.setHours(23, 59, 59, 999); // 指定日の終わり
+      // 無効な日付の場合
+      if (!dayjs(start).isValid()) {
+        start = dayjs().startOf("month").toDate();
+      }
+
+      if (!dayjs(end).isValid()) {
+        end = dayjs().endOf("day").toDate();
+      }
+
+      console.log(
+        `Date range: ${dayjs(start).format("YYYY-MM-DD")} to ${dayjs(end).format("YYYY-MM-DD")}`,
+      );
+    } catch (error) {
+      console.error("Date parsing error:", error);
+      start = dayjs().startOf("month").toDate();
+      end = dayjs().endOf("day").toDate();
     }
 
     // 勤怠記録の取得
@@ -69,6 +88,7 @@ export default async function handler(
       orderBy: [{ date: "desc" }, { user: { name: "asc" } }],
     });
 
+    // CSVデータの作成
     // 月次CSVファイル名の作成
     const fileName =
       req.query.type === "monthly"
@@ -114,22 +134,26 @@ export default async function handler(
         totalWorkHours = hours.toFixed(2);
       }
 
-      // 日付を日本時間でフォーマット
-      const recordDate = new Date(record.date);
-      const date = dayjs(recordDate).format("yyyy/MM/dd");
+      // 日付フォーマット - nullチェックを追加
+      const date = record.date ? dayjs(record.date).format("YYYY/MM/DD") : "-";
 
-      // 時刻を日本時間でフォーマット
-      const formatTimeToJST = (time: Date | null) => {
+      // 時刻フォーマット - nullチェックを強化
+      const formatTime = (time: Date | null) => {
         if (!time) return "-";
-        return dayjs(time).format("HH:mm:ss");
+        try {
+          return dayjs(time).format("HH:mm:ss");
+        } catch (error) {
+          console.error("Time format error:", error, time);
+          return "-";
+        }
       };
 
       // CSVの行を作成
       const row = [
         date,
         record.user.name,
-        formatTimeToJST(record.checkIn),
-        formatTimeToJST(record.checkOut),
+        formatTime(record.checkIn),
+        formatTime(record.checkOut),
         breakDuration,
         totalWorkHours,
         record.isAbsent ? "はい" : "いいえ",
