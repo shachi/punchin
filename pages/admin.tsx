@@ -3,15 +3,7 @@ import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/router";
 import Layout from "../components/Layout";
-import {
-  format,
-  startOfMonth,
-  endOfMonth,
-  subMonths,
-  addMonths,
-} from "date-fns";
-import { toZonedTime } from "date-fns-tz";
-import { ja } from "date-fns/locale";
+import dayjs from "../lib/dayjs";
 
 interface AttendanceRecord {
   id: string;
@@ -34,13 +26,13 @@ export default function AdminDashboard() {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   // 選択された期間の開始日・終了日
   const [startDate, setStartDate] = useState<string>(() => {
-    const firstDay = startOfMonth(currentMonth);
-    return format(firstDay, "yyyy-MM-dd");
+    const firstDay = dayjs(currentMonth).startOf("month");
+    return dayjs(firstDay).format("YYYY-MM-DD");
   });
 
   const [endDate, setEndDate] = useState<string>(() => {
-    const lastDay = endOfMonth(currentMonth);
-    return format(lastDay, "yyyy-MM-dd");
+    const lastDay = dayjs(currentMonth).endOf("month");
+    return dayjs(lastDay).format("YYYY-MM-DD");
   });
 
   // 既存の状態変数
@@ -56,20 +48,22 @@ export default function AdminDashboard() {
 
   // 月が変更されたら日付範囲を更新
   useEffect(() => {
-    const firstDay = startOfMonth(currentMonth);
-    const lastDay = endOfMonth(currentMonth);
-    setStartDate(format(firstDay, "yyyy-MM-dd"));
-    setEndDate(format(lastDay, "yyyy-MM-dd"));
+    const firstDay = dayjs(currentMonth).startOf("month");
+    const lastDay = dayjs(currentMonth).endOf("month");
+    setStartDate(dayjs(firstDay).format("YYYY-MM-DD"));
+    setEndDate(dayjs(lastDay).format("YYYY-MM-DD"));
   }, [currentMonth]);
 
   // 前月へ
   const goToPreviousMonth = () => {
-    setCurrentMonth((prevMonth) => subMonths(prevMonth, 1));
+    setCurrentMonth((prevMonth) =>
+      dayjs(prevMonth).subtract(1, "month").toDate(),
+    );
   };
 
   // 翌月へ
   const goToNextMonth = () => {
-    setCurrentMonth((prevMonth) => addMonths(prevMonth, 1));
+    setCurrentMonth((prevMonth) => dayjs(prevMonth).add(1, "month").toDate());
   };
 
   const fetchRecords = async (page = currentPage) => {
@@ -125,10 +119,10 @@ export default function AdminDashboard() {
 
   // 月が変更されたら日付範囲を更新し、1ページ目から表示
   useEffect(() => {
-    const firstDay = startOfMonth(currentMonth);
-    const lastDay = endOfMonth(currentMonth);
-    setStartDate(format(firstDay, "yyyy-MM-dd"));
-    setEndDate(format(lastDay, "yyyy-MM-dd"));
+    const firstDay = dayjs(currentMonth).startOf("date");
+    const lastDay = dayjs(currentMonth).endOf("date");
+    setStartDate(dayjs(firstDay).format("yyyy-MM-dd"));
+    setEndDate(dayjs(lastDay).format("yyyy-MM-dd"));
     setCurrentPage(1); // 月が変わったら1ページ目に戻す
   }, [currentMonth]);
 
@@ -243,16 +237,16 @@ export default function AdminDashboard() {
   const formatTime = (timeString: string | null) => {
     if (!timeString) return "-";
     const date = new Date(timeString);
-    const jstDate = toZonedTime(date, "Asia/Tokyo");
-    return format(jstDate, "HH:mm:ss");
+    return dayjs(date).format("HH:mm:ss");
   };
 
-  // 日付のフォーマット
+  // 日付フォーマット
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    const jstDate = toZonedTime(date, "Asia/Tokyo");
-    return format(jstDate, "yyyy/MM/dd (E)", { locale: ja });
+    return dayjs(dateString).format("YYYY/MM/DD (ddd)");
   };
+
+  // 表示時のフォーマット
+  const monthDisplay = dayjs(currentMonth).format("YYYY年M月");
 
   // CSVエクスポート（月単位）
   const handleExportMonthlyCSV = () => {
@@ -277,9 +271,7 @@ export default function AdminDashboard() {
                 ← 前月
               </button>
 
-              <h2 className="text-xl font-semibold">
-                {format(currentMonth, "yyyy年M月", { locale: ja })}
-              </h2>
+              <h2 className="text-xl font-semibold">{monthDisplay}</h2>
 
               <button
                 onClick={goToNextMonth}

@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/router";
-import { toZonedTime, fromZonedTime } from "date-fns-tz";
+import dayjs from "../lib/dayjs";
 import Layout from "../components/Layout";
 import AttendanceButtons from "../components/AttendanceButtons";
 import Clock from "../components/Clock";

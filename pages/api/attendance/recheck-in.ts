@@ -3,7 +3,7 @@ import { NextApiRequest, NextApiResponse } from "next";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
 import { prisma } from "../../../lib/prisma";
-import { toZonedTime, fromZonedTime } from "date-fns-tz"; // この依存関係が必要
+import dayjs from "../../../lib/dayjs";
 
 export default async function handler(
   req: NextApiRequest,
@@ -44,32 +44,35 @@ export default async function handler(
     const now = new Date();
 
     // 現在の日時を日本時間に変換
-    const jstNow = toZonedTime(now, "Asia/Tokyo");
+    const jstNow = dayjs(now).tz("Asia/Tokyo");
     console.log("現在時刻(JST):", jstNow);
 
     // 日本時間での今日の日付を取得
-    const jstToday = new Date(jstNow);
+    const jstToday = jstNow.toDate();
     jstToday.setHours(0, 0, 0, 0);
 
     // 業務日の境界（AM4:00）を考慮
-    const jstBusinessDate = new Date(jstNow);
-    if (jstNow.getHours() < 4) {
+    const jstBusinessDate = jstNow.toDate();
+    if (jstNow.hour() < 4) {
       jstBusinessDate.setDate(jstBusinessDate.getDate() - 1);
     }
     jstBusinessDate.setHours(0, 0, 0, 0);
 
     // JSTの業務日をUTCに変換（データベース比較用）
-    const businessDate = fromZonedTime(jstBusinessDate, "Asia/Tokyo");
+    const businessDate = dayjs(jstBusinessDate).tz("Asia/Tokyo");
 
     console.log("業務日(JST):", jstBusinessDate);
     console.log("業務日(UTC):", businessDate);
 
     // 業務日の範囲で記録を検索
-    const businessDayStart = new Date(businessDate);
-    const businessDayEnd = new Date(businessDate);
-    businessDayEnd.setDate(businessDayEnd.getDate() + 1);
-    businessDayEnd.setHours(3, 59, 59, 999);
-    businessDayEnd.setSeconds(59, 999);
+    const businessDayStart = businessDate.toDate();
+    const businessDayEnd = businessDate
+      .add(1, "day")
+      .hour(3)
+      .minute(59)
+      .second(59)
+      .millisecond(999)
+      .toDate();
 
     // 既存の記録を確認
     const record = await prisma.attendanceRecord.findFirst({

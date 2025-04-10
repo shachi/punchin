@@ -2,7 +2,7 @@
 import { NextApiRequest, NextApiResponse } from "next";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
-import { toZonedTime, fromZonedTime } from "date-fns-tz";
+import dayjs from "../../../lib/dayjs";
 import { prisma } from "../../../lib/prisma";
 
 export default async function handler(
@@ -29,18 +29,18 @@ export default async function handler(
 
     // 現在の日時と業務日を取得（日本時間ベース）
     const now = new Date();
-    const jstNow = toZonedTime(now, "Asia/Tokyo");
+    const jstNow = dayjs(now).tz("Asia/Tokyo");
 
     // 日本時間で業務日を判定
-    const jstBusinessDate = new Date(jstNow);
+    const jstBusinessDate = jstNow.toDate();
 
-    if (jstNow.getHours() < 4) {
+    if (jstNow.hour() < 4) {
       jstBusinessDate.setDate(jstBusinessDate.getDate() - 1);
     }
     jstBusinessDate.setHours(0, 0, 0, 0);
 
     // JSTの業務日をUTCに変換（データベース比較用）
-    const businessDate = fromZonedTime(jstBusinessDate, "Asia/Tokyo");
+    const businessDate = dayjs(jstBusinessDate).tz("Asia/Tokyo");
 
     console.log("現在時刻(JST):", jstNow);
     console.log("業務日(JST):", jstBusinessDate);
@@ -75,20 +75,17 @@ export default async function handler(
     let lastUpdatedBusinessDate = null;
     if (userState?.lastUpdated) {
       const lastUpdated = new Date(userState.lastUpdated);
-      const jstLastUpdated = toZonedTime(lastUpdated, "Asia/Tokyo");
+      const jstLastUpdated = dayjs(lastUpdated).tz("Asia/Tokyo");
 
-      lastUpdatedBusinessDate = new Date(jstLastUpdated);
+      lastUpdatedBusinessDate = jstLastUpdated.toDate();
 
-      if (jstLastUpdated.getHours() < 4) {
+      if (jstLastUpdated.hour() < 4) {
         lastUpdatedBusinessDate.setDate(lastUpdatedBusinessDate.getDate() - 1);
       }
       lastUpdatedBusinessDate.setHours(0, 0, 0, 0);
 
       // JSTの最終更新業務日をUTCに変換（比較用）
-      lastUpdatedBusinessDate = fromZonedTime(
-        lastUpdatedBusinessDate,
-        "Asia/Tokyo",
-      );
+      lastUpdatedBusinessDate = dayjs(lastUpdatedBusinessDate).tz("Asia/Tokyo");
     }
 
     console.log("最終更新業務日:", lastUpdatedBusinessDate);
@@ -98,7 +95,8 @@ export default async function handler(
     let stateChanged = false;
     if (
       lastUpdatedBusinessDate &&
-      businessDate.getTime() > lastUpdatedBusinessDate.getTime() &&
+      businessDate.toDate().getTime() >
+        lastUpdatedBusinessDate.toDate().getTime() &&
       userState.currentState !== "not_checked_in"
     ) {
       console.log("業務日が変わったため状態をリセットします");
@@ -120,10 +118,14 @@ export default async function handler(
       : userState.currentState;
 
     // 業務日の記録を検索
-    const businessDayStart = new Date(businessDate);
-    const businessDayEnd = new Date(businessDate);
-    businessDayEnd.setDate(businessDayEnd.getDate() + 1);
-    businessDayEnd.setHours(3, 59, 59, 999);
+    const businessDayStart = businessDate.toDate();
+    const businessDayEnd = businessDate
+      .add(1, "day")
+      .hour(3)
+      .minute(59)
+      .second(59)
+      .millisecond(999)
+      .toDate();
 
     console.log("業務日の範囲:", businessDayStart, "から", businessDayEnd);
 

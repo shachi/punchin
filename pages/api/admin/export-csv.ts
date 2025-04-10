@@ -3,8 +3,7 @@ import { NextApiRequest, NextApiResponse } from "next";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
 import { prisma } from "../../../lib/prisma";
-import { format, parseISO } from "date-fns";
-import { toZonedTime } from "date-fns-tz";
+import dayjs from "../../../lib/dayjs";
 
 export default async function handler(
   req: NextApiRequest,
@@ -73,13 +72,13 @@ export default async function handler(
     // 月次CSVファイル名の作成
     const fileName =
       req.query.type === "monthly"
-        ? `monthly_attendance_${format(start, "yyyyMM")}.csv`
-        : `attendance_${format(start, "yyyyMMdd")}-${format(end, "yyyyMMdd")}.csv`;
+        ? `monthly_attendance_${dayjs(start).format("yyyyMM")}.csv`
+        : `attendance_${dayjs(start).format("yyyyMMdd")}-${dayjs(end).format("yyyyMMdd")}.csv`;
 
     // CSVヘッダーに月次情報を追加
     const header =
       req.query.type === "monthly"
-        ? `${format(start, "yyyy年M月")}の勤怠記録\n日付,氏名,出社時間,退社時間,休憩時間(分),勤務時間,欠勤\n`
+        ? `${dayjs(start).format("yyyy年M月")}の勤怠記録\n日付,氏名,出社時間,退社時間,休憩時間(分),勤務時間,欠勤\n`
         : "日付,氏名,出社時間,退社時間,休憩時間(分),勤務時間,欠勤\n";
 
     let csv = header;
@@ -117,14 +116,12 @@ export default async function handler(
 
       // 日付を日本時間でフォーマット
       const recordDate = new Date(record.date);
-      const jstDate = toZonedTime(recordDate, timeZone);
-      const date = format(jstDate, "yyyy/MM/dd");
+      const date = dayjs(recordDate).format("yyyy/MM/dd");
 
       // 時刻を日本時間でフォーマット
       const formatTimeToJST = (time: Date | null) => {
         if (!time) return "-";
-        const jstTime = toZonedTime(time, timeZone);
-        return format(jstTime, "HH:mm:ss");
+        return dayjs(time).format("HH:mm:ss");
       };
 
       // CSVの行を作成

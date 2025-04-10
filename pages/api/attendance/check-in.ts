@@ -2,7 +2,7 @@
 import { NextApiRequest, NextApiResponse } from "next";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
-import { toZonedTime, fromZonedTime } from "date-fns-tz";
+import dayjs from "../../../lib/dayjs";
 import { prisma } from "../../../lib/prisma";
 
 export default async function handler(
@@ -27,19 +27,13 @@ export default async function handler(
     const userId = session.user.id;
 
     // 現在の日時と業務日を取得（日本時間ベース）
-    const now = new Date();
-    const jstNow = toZonedTime(now, "Asia/Tokyo");
+    const now = dayjs();
+    const jstNow = now.tz("Asia/Tokyo");
 
-    // 日本時間で業務日を判定
-    const jstBusinessDate = new Date(jstNow);
-
-    if (jstNow.getHours() < 4) {
-      jstBusinessDate.setDate(jstBusinessDate.getDate() - 1);
-    }
-    jstBusinessDate.setHours(0, 0, 0, 0);
-
-    // JSTの業務日をUTCに変換（データベース比較用）
-    const businessDate = fromZonedTime(jstBusinessDate, "Asia/Tokyo");
+    const businessDate =
+      jstNow.hour() < 4
+        ? jstNow.subtract(1, "day").startOf("day")
+        : jstNow.startOf("day");
 
     // まず状態をリセットするかチェック
     const userState = await prisma.userState.findUnique({
@@ -60,7 +54,7 @@ export default async function handler(
     // 業務日が変わった場合は状態をリセット
     if (
       lastUpdatedBusinessDate &&
-      businessDate.getTime() > lastUpdatedBusinessDate.getTime() &&
+      businessDate.get("date") > lastUpdatedBusinessDate.getTime() &&
       userState?.currentState !== "not_checked_in"
     ) {
       console.log("Resetting state due to business day change");
@@ -69,7 +63,7 @@ export default async function handler(
         where: { userId },
         data: {
           currentState: "not_checked_in",
-          lastUpdated: now,
+          lastUpdated: now.toDate(),
         },
       });
     }
@@ -89,10 +83,14 @@ export default async function handler(
     }
 
     // 業務日の範囲を設定
-    const businessDayStart = new Date(businessDate);
-    const businessDayEnd = new Date(businessDate);
-    businessDayEnd.setDate(businessDayEnd.getDate() + 1);
-    businessDayEnd.setHours(3, 59, 59, 999);
+    const businessDayStart = businessDate.toDate();
+    const businessDayEnd = businessDate
+      .add(1, "day")
+      .hour(3)
+      .minute(59)
+      .second(59)
+      .millisecond(999)
+      .toDate();
 
     // 既存の記録を確認
     let record = await prisma.attendanceRecord.findFirst({
@@ -114,7 +112,7 @@ export default async function handler(
         data: {
           userId,
           date: businessDayStart,
-          checkIn: now,
+          checkIn: now.toDate(),
           isAbsent: false,
         },
       });
@@ -124,7 +122,7 @@ export default async function handler(
     await prisma.attendanceRecord.update({
       where: { id: record.id },
       data: {
-        checkIn: now,
+        checkIn: now.toDate(),
         isAbsent: false,
       },
     });
@@ -136,7 +134,7 @@ export default async function handler(
       where: { userId },
       data: {
         currentState: "checked_in",
-        lastUpdated: now,
+        lastUpdated: now.toDate(),
       },
     });
 

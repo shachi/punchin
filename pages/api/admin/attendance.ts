@@ -42,13 +42,51 @@ export default async function handler(
     const skip = (page - 1) * pageSize;
 
     // 日付のバリデーション
-    const start = startDateStr ? new Date(startDateStr as string) : new Date();
-    start.setHours(0, 0, 0, 0);
+    let start, end;
 
-    const end = endDateStr ? new Date(endDateStr as string) : new Date();
-    end.setHours(23, 59, 59, 999);
+    try {
+      // 日付文字列のバリデーション
+      if (
+        typeof startDateStr === "string" &&
+        startDateStr.match(/^\d{4}-\d{2}-\d{2}$/)
+      ) {
+        start = new Date(startDateStr);
+      } else {
+        // 無効な日付の場合は現在の月の初日を使用
+        start = new Date();
+        start.setDate(1);
+      }
 
-    console.log(`Date range: ${start.toISOString()} to ${end.toISOString()}`);
+      if (
+        typeof endDateStr === "string" &&
+        endDateStr.match(/^\d{4}-\d{2}-\d{2}$/)
+      ) {
+        end = new Date(endDateStr);
+      } else {
+        // 無効な日付の場合は現在の日付を使用
+        end = new Date();
+      }
+
+      // 時刻を設定
+      start.setHours(0, 0, 0, 0);
+      end.setHours(23, 59, 59, 999);
+
+      console.log(`Date range: ${start.toISOString()} to ${end.toISOString()}`);
+    } catch (err) {
+      console.error("Date parsing error:", err, { startDateStr, endDateStr });
+
+      // エラーが発生した場合はデフォルト値を使用
+      start = new Date();
+      start.setDate(1); // 月初
+      start.setHours(0, 0, 0, 0);
+
+      end = new Date();
+      end.setHours(23, 59, 59, 999);
+
+      console.log(
+        `Using default date range: ${start.toISOString()} to ${end.toISOString()}`,
+      );
+    }
     console.log(`Pagination: page=${page}, pageSize=${pageSize}, skip=${skip}`);
 
     // 日付が無効な場合のデフォルト値設定
