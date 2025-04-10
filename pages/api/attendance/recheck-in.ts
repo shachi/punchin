@@ -40,31 +40,16 @@ export default async function handler(
         .json({ success: false, message: "退社状態でないと再出社できません" });
     }
 
-    // 現在の日時（UTC）
-    const now = new Date();
+    // 現在時刻（JST）
+    const now = dayjs().tz("Asia/Tokyo");
 
-    // 現在の日時を日本時間に変換
-    const jstNow = dayjs(now).tz("Asia/Tokyo");
-    console.log("現在時刻(JST):", jstNow);
+    // 業務日の計算（AM4時を境界とする）
+    const businessDate =
+      now.hour() < 4
+        ? now.subtract(1, "day").startOf("day")
+        : now.startOf("day");
 
-    // 日本時間での今日の日付を取得
-    const jstToday = jstNow.toDate();
-    jstToday.setHours(0, 0, 0, 0);
-
-    // 業務日の境界（AM4:00）を考慮
-    const jstBusinessDate = jstNow.toDate();
-    if (jstNow.hour() < 4) {
-      jstBusinessDate.setDate(jstBusinessDate.getDate() - 1);
-    }
-    jstBusinessDate.setHours(0, 0, 0, 0);
-
-    // JSTの業務日をUTCに変換（データベース比較用）
-    const businessDate = dayjs(jstBusinessDate).tz("Asia/Tokyo");
-
-    console.log("業務日(JST):", jstBusinessDate);
-    console.log("業務日(UTC):", businessDate);
-
-    // 業務日の範囲で記録を検索
+    // 業務日の範囲
     const businessDayStart = businessDate.toDate();
     const businessDayEnd = businessDate
       .add(1, "day")
@@ -96,7 +81,7 @@ export default async function handler(
       where: { userId },
       data: {
         currentState: "checked_in",
-        lastUpdated: now,
+        lastUpdated: now.toDate(),
       },
     });
 

@@ -37,6 +37,7 @@ export default function Dashboard() {
       router.push("/login"); // 認証されていない場合はログインページへ
     }
   }, [status, router]);
+
   // 状態取得を強化
   const fetchUserState = async (retryCount = 0) => {
     try {
@@ -149,54 +150,26 @@ export default function Dashboard() {
   };
 
   // 日付変更の検出用タイマー
+  // 日付変更の検出用タイマー
   useEffect(() => {
     if (session) {
-      // 初回読み込み時に状態取得
-      fetchUserState();
-
-      // ページがフォーカスを取得したときに状態を更新
-      const handleFocus = () => {
-        console.log("Window focused, updating state");
-        fetchUserState();
-      };
-
-      // ページが表示状態になったときに状態を更新
-      const handleVisibilityChange = () => {
-        if (document.visibilityState === "visible") {
-          console.log("Page became visible, updating state");
-          fetchUserState();
-        }
-      };
-
-      // 1分ごとにチェック（特にAM4時周辺）
+      // 1分ごとにチェック
       const timer = setInterval(() => {
-        // 現在時刻（ブラウザのローカル時間）
-        const now = new Date();
-        console.log("Regular check:", now.toLocaleTimeString("ja-JP"));
+        const now = dayjs().tz("Asia/Tokyo");
+        console.log("Regular check:", now.format("HH:mm:ss"));
 
-        // 日本時間のAM4:00チェック
-        if (now.getHours() === 4 && now.getMinutes() === 0) {
-          console.log("It's 4:00 AM JST, reloading page");
+        // AM4:00ちょうどに近い場合は強制リロード
+        if (now.hour() === 4 && now.minute() >= 0 && now.minute() < 5) {
+          console.log("It's around 4:00 AM JST, reloading page");
           window.location.reload();
           return;
         }
 
-        // それ以外は通常の更新
+        // 状態更新
         fetchUserState();
       }, 60000);
 
-      // イベントリスナーを登録
-      window.addEventListener("focus", handleFocus);
-      document.addEventListener("visibilitychange", handleVisibilityChange);
-
-      return () => {
-        window.removeEventListener("focus", handleFocus);
-        document.removeEventListener(
-          "visibilitychange",
-          handleVisibilityChange,
-        );
-        clearInterval(timer);
-      };
+      return () => clearInterval(timer);
     }
   }, [session]);
 

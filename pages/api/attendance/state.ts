@@ -27,31 +27,24 @@ export default async function handler(
     const userId = session.user.id;
     console.log("状態取得 - ユーザーID:", userId);
 
-    // 現在の日時と業務日を取得（日本時間ベース）
-    const now = new Date();
-    const jstNow = dayjs(now).tz("Asia/Tokyo");
+    // 現在時刻（JST）
+    const now = dayjs().tz("Asia/Tokyo");
+    console.log("現在時刻(JST):", now.format("YYYY-MM-DD HH:mm:ss"));
 
-    // 日本時間で業務日を判定
-    const jstBusinessDate = jstNow.toDate();
+    // 業務日の計算（AM4時を境界とする）
+    const businessDate =
+      now.hour() < 4
+        ? now.subtract(1, "day").startOf("day")
+        : now.startOf("day");
 
-    if (jstNow.hour() < 4) {
-      jstBusinessDate.setDate(jstBusinessDate.getDate() - 1);
-    }
-    jstBusinessDate.setHours(0, 0, 0, 0);
-
-    // JSTの業務日をUTCに変換（データベース比較用）
-    const businessDate = dayjs(jstBusinessDate).tz("Asia/Tokyo");
-
-    console.log("現在時刻(JST):", jstNow);
-    console.log("業務日(JST):", jstBusinessDate);
-    console.log("業務日(UTC):", businessDate);
+    console.log("業務日:", businessDate.format("YYYY-MM-DD"));
 
     // ユーザー状態を取得
     const userState = await prisma.userState.findUnique({
       where: { userId },
     });
 
-    console.log("ユーザー状態:", userState);
+    console.log("現在のユーザー状態:", userState?.currentState);
 
     // 状態がない場合は作成
     if (!userState) {
@@ -59,7 +52,7 @@ export default async function handler(
         data: {
           userId,
           currentState: "not_checked_in",
-          lastUpdated: now,
+          lastUpdated: now.toDate(),
         },
       });
 
@@ -71,53 +64,46 @@ export default async function handler(
       });
     }
 
-    // 状態の最終更新日の業務日を計算（JSTベース）
-    let lastUpdatedBusinessDate = null;
-    if (userState?.lastUpdated) {
-      const lastUpdated = new Date(userState.lastUpdated);
-      const jstLastUpdated = dayjs(lastUpdated).tz("Asia/Tokyo");
+    // 前回更新時の業務日を計算
+    const lastUpdated = dayjs(userState.lastUpdated).tz("Asia/Tokyo");
+    console.log(
+      "最終更新時刻(JST):",
+      lastUpdated.format("YYYY-MM-DD HH:mm:ss"),
+    );
 
-      lastUpdatedBusinessDate = jstLastUpdated.toDate();
+    const lastBusinessDate =
+      lastUpdated.hour() < 4
+        ? lastUpdated.subtract(1, "day").startOf("day")
+        : lastUpdated.startOf("day");
 
-      if (jstLastUpdated.hour() < 4) {
-        lastUpdatedBusinessDate.setDate(lastUpdatedBusinessDate.getDate() - 1);
-      }
-      lastUpdatedBusinessDate.setHours(0, 0, 0, 0);
+    console.log("前回の業務日:", lastBusinessDate.format("YYYY-MM-DD"));
+    console.log(
+      "業務日比較:",
+      businessDate.format("YYYY-MM-DD"),
+      lastBusinessDate.format("YYYY-MM-DD"),
+    );
 
-      // JSTの最終更新業務日をUTCに変換（比較用）
-      lastUpdatedBusinessDate = dayjs(lastUpdatedBusinessDate).tz("Asia/Tokyo");
-    }
-
-    console.log("最終更新業務日:", lastUpdatedBusinessDate);
-    console.log("現在の状態:", userState.currentState);
+    // 業務日が変わったかどうか
+    const dateChanged = !businessDate.isSame(lastBusinessDate, "day");
+    console.log("業務日変更:", dateChanged);
 
     // 業務日が変わった場合は状態をリセット
-    let stateChanged = false;
-    if (
-      lastUpdatedBusinessDate &&
-      businessDate.toDate().getTime() >
-        lastUpdatedBusinessDate.toDate().getTime() &&
-      userState.currentState !== "not_checked_in"
-    ) {
-      console.log("業務日が変わったため状態をリセットします");
+    let currentState = userState.currentState;
+
+    if (dateChanged && userState.currentState !== "not_checked_in") {
+      console.log("業務日が変わったため、状態をリセットします");
 
       await prisma.userState.update({
         where: { userId },
         data: {
           currentState: "not_checked_in",
-          lastUpdated: now,
+          lastUpdated: now.toDate(),
         },
       });
 
-      stateChanged = true;
+      currentState = "not_checked_in";
     }
-
-    // 最新の状態（リセットした場合は "not_checked_in"）
-    const currentState = stateChanged
-      ? "not_checked_in"
-      : userState.currentState;
-
-    // 業務日の記録を検索
+    // 今日の勤怠記録を検索
     const businessDayStart = businessDate.toDate();
     const businessDayEnd = businessDate
       .add(1, "day")
@@ -127,7 +113,12 @@ export default async function handler(
       .millisecond(999)
       .toDate();
 
-    console.log("業務日の範囲:", businessDayStart, "から", businessDayEnd);
+    console.log(
+      "業務日の範囲:",
+      dayjs(businessDayStart).format("YYYY-MM-DD HH:mm:ss"),
+      "から",
+      dayjs(businessDayEnd).format("YYYY-MM-DD HH:mm:ss"),
+    );
 
     const record = await prisma.attendanceRecord.findFirst({
       where: {
@@ -138,34 +129,19 @@ export default async function handler(
         },
       },
     });
-    console.log("業務日の記録:", record);
 
-    // クライアントに最新の状態を返す
+    console.log("今日の記録:", record ? "あり" : "なし");
+
     return res.status(200).json({
       success: true,
       currentState,
       record,
-      dateChanged: stateChanged,
-      lastUpdated: now.toISOString(), // 最終更新時刻も返す
+      dateChanged,
     });
   } catch (error) {
-    // エラーログをより詳細に
-    console.error("Error processing state request:", error);
-    console.error(
-      "Error stack:",
-      error instanceof Error ? error.stack : "No stack trace",
-    );
-
-    // もっと具体的なエラーメッセージを返す
-    const errorMessage =
-      error instanceof Error
-        ? `サーバーエラー: ${error.message}`
-        : "サーバーエラーが発生しました";
-
-    return res.status(500).json({
-      success: false,
-      message: errorMessage,
-      error: process.env.NODE_ENV === "development" ? String(error) : undefined,
-    });
+    console.error("Error fetching user state:", error);
+    return res
+      .status(500)
+      .json({ success: false, message: "サーバーエラーが発生しました" });
   }
 }

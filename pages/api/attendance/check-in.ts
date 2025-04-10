@@ -27,13 +27,23 @@ export default async function handler(
     const userId = session.user.id;
 
     // 現在の日時と業務日を取得（日本時間ベース）
-    const now = dayjs();
-    const jstNow = now.tz("Asia/Tokyo");
+    const now = dayjs().tz("Asia/Tokyo");
 
+    // 業務日の計算（AM4時を境界とする）
     const businessDate =
-      jstNow.hour() < 4
-        ? jstNow.subtract(1, "day").startOf("day")
-        : jstNow.startOf("day");
+      now.hour() < 4
+        ? now.subtract(1, "day").startOf("day")
+        : now.startOf("day");
+
+    // 業務日の範囲
+    const businessDayStart = businessDate.toDate();
+    const businessDayEnd = businessDate
+      .add(1, "day")
+      .hour(3)
+      .minute(59)
+      .second(59)
+      .millisecond(999)
+      .toDate();
 
     // まず状態をリセットするかチェック
     const userState = await prisma.userState.findUnique({
@@ -81,16 +91,6 @@ export default async function handler(
         currentState: updatedUserState?.currentState,
       });
     }
-
-    // 業務日の範囲を設定
-    const businessDayStart = businessDate.toDate();
-    const businessDayEnd = businessDate
-      .add(1, "day")
-      .hour(3)
-      .minute(59)
-      .second(59)
-      .millisecond(999)
-      .toDate();
 
     // 既存の記録を確認
     let record = await prisma.attendanceRecord.findFirst({
