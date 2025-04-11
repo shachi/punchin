@@ -37,26 +37,32 @@ export default async function handler(
         .json({ success: false, message: "出社状態でないと退社できません" });
     }
 
-    // 現在の日時と業務日を取得（日本時間ベース）
-    const jstNow = dayjs().tz("Asia/Tokyo").toDate();
+    // 現在時刻（JST）
+    const now = dayjs().tz("Asia/Tokyo");
 
-    // 日本時間で業務日を判定
-    const jstBusinessDate = new Date(jstNow);
+    // 業務日の計算（AM4時を境界とする）
+    const businessDate =
+      now.hour() < 4
+        ? now.subtract(1, "day").startOf("day")
+        : now.startOf("day");
 
-    if (jstNow.getHours() < 4) {
-      jstBusinessDate.setDate(jstBusinessDate.getDate() - 1);
-    }
-    jstBusinessDate.setHours(0, 0, 0, 0);
+    // 業務日の範囲
+    const businessDayStart = businessDate.toDate();
+    const businessDayEnd = businessDate
+      .add(1, "day")
+      .hour(3)
+      .minute(59)
+      .second(59)
+      .millisecond(999)
+      .toDate();
 
-    // JSTの業務日をUTCに変換（データベース比較用）
-    const today = dayjs(jstBusinessDate).tz("Asia/Tokyo");
-
+    // 記録を検索
     const record = await prisma.attendanceRecord.findFirst({
       where: {
         userId,
         date: {
-          gte: today.toDate(),
-          lt: new Date(today.toDate().getTime() + 24 * 60 * 60 * 1000),
+          gte: businessDayStart,
+          lt: businessDayEnd,
         },
       },
     });
