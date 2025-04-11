@@ -85,7 +85,31 @@ export default async function handler(
 
     // 業務日が変わったかどうか
     const dateChanged = !businessDate.isSame(lastBusinessDate, "day");
-    console.log("業務日変更:", dateChanged);
+    console.log(
+      "業務日変更判定:",
+      businessDate.format("YYYY-MM-DD"),
+      lastBusinessDate.format("YYYY-MM-DD"),
+      dateChanged,
+    );
+    console.log("現在時刻のhour:", now.hour());
+    console.log("最終更新時刻のhour:", lastUpdated.hour());
+
+    // デバッグ用の詳細情報
+    console.log("UTCでの現在時刻:", dayjs().format("YYYY-MM-DD HH:mm:ss"));
+    console.log(
+      "JSTでの現在時刻:",
+      dayjs().tz("Asia/Tokyo").format("YYYY-MM-DD HH:mm:ss"),
+    );
+    console.log(
+      "UTCでの最終更新時刻:",
+      dayjs(userState.lastUpdated).format("YYYY-MM-DD HH:mm:ss"),
+    );
+    console.log(
+      "JSTでの最終更新時刻:",
+      dayjs(userState.lastUpdated)
+        .tz("Asia/Tokyo")
+        .format("YYYY-MM-DD HH:mm:ss"),
+    );
 
     // 業務日が変わった場合は状態をリセット
     let currentState = userState.currentState;
@@ -102,6 +126,11 @@ export default async function handler(
       });
 
       currentState = "not_checked_in";
+    } else {
+      console.log(
+        "業務日は変わっていないため、状態を維持します:",
+        userState.currentState,
+      );
     }
     // 今日の勤怠記録を検索
     const businessDayStart = businessDate.toDate();
