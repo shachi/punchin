@@ -64,7 +64,7 @@ export default async function handler(
       });
     }
 
-    // 前回更新時の業務日を計算
+    // 前回更新時の業務日を計算（JSTベース）
     const lastUpdated = dayjs(userState.lastUpdated).tz("Asia/Tokyo");
     console.log(
       "最終更新時刻(JST):",
@@ -77,39 +77,20 @@ export default async function handler(
         : lastUpdated.startOf("day");
 
     console.log("前回の業務日:", lastBusinessDate.format("YYYY-MM-DD"));
-    console.log(
-      "業務日比較:",
-      businessDate.format("YYYY-MM-DD"),
-      lastBusinessDate.format("YYYY-MM-DD"),
-    );
 
-    // 業務日が変わったかどうか
+    // 業務日が変わったかどうか（日付比較）
     const dateChanged = !businessDate.isSame(lastBusinessDate, "day");
     console.log(
       "業務日変更判定:",
       businessDate.format("YYYY-MM-DD"),
+      "vs",
       lastBusinessDate.format("YYYY-MM-DD"),
-      dateChanged,
+      dateChanged ? "変更あり" : "変更なし",
     );
-    console.log("現在時刻のhour:", now.hour());
-    console.log("最終更新時刻のhour:", lastUpdated.hour());
 
     // デバッグ用の詳細情報
-    console.log("UTCでの現在時刻:", dayjs().format("YYYY-MM-DD HH:mm:ss"));
-    console.log(
-      "JSTでの現在時刻:",
-      dayjs().tz("Asia/Tokyo").format("YYYY-MM-DD HH:mm:ss"),
-    );
-    console.log(
-      "UTCでの最終更新時刻:",
-      dayjs(userState.lastUpdated).format("YYYY-MM-DD HH:mm:ss"),
-    );
-    console.log(
-      "JSTでの最終更新時刻:",
-      dayjs(userState.lastUpdated)
-        .tz("Asia/Tokyo")
-        .format("YYYY-MM-DD HH:mm:ss"),
-    );
+    console.log("現在時刻のhour:", now.hour());
+    console.log("最終更新時刻のhour:", lastUpdated.hour());
 
     // 業務日が変わった場合は状態をリセット
     let currentState = userState.currentState;
@@ -132,6 +113,7 @@ export default async function handler(
         userState.currentState,
       );
     }
+
     // 今日の勤怠記録を検索
     const businessDayStart = businessDate.toDate();
     const businessDayEnd = businessDate

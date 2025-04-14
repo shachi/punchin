@@ -42,12 +42,15 @@ export default async function handler(
 
     // 現在時刻（JST）
     const now = dayjs().tz("Asia/Tokyo");
+    console.log("現在時刻:", now.format());
 
     // 業務日の計算（AM4時を境界とする）
     const businessDate =
       now.hour() < 4
         ? now.subtract(1, "day").startOf("day")
         : now.startOf("day");
+
+    console.log("業務日:", businessDate.format());
 
     // 業務日の範囲
     const businessDayStart = businessDate.toDate();
@@ -59,6 +62,9 @@ export default async function handler(
       .millisecond(999)
       .toDate();
 
+    console.log("業務日開始:", dayjs(businessDayStart).format());
+    console.log("業務日終了:", dayjs(businessDayEnd).format());
+
     // 既存の記録を確認
     const record = await prisma.attendanceRecord.findFirst({
       where: {
@@ -69,6 +75,8 @@ export default async function handler(
         },
       },
     });
+
+    console.log("取得した記録:", record);
 
     if (!record) {
       return res

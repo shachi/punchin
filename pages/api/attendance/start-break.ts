@@ -41,43 +41,54 @@ export default async function handler(
       });
     }
 
-    // 現在の日時と業務日を取得（日本時間ベース）
-    const now = new Date();
-    const jstNow = dayjs(now).tz("Asia/Tokyo");
+    // 現在時刻（JST）
+    const now = dayjs().tz("Asia/Tokyo");
+    console.log("現在時刻:", now.format());
 
-    // 日本時間で業務日を判定
-    const jstBusinessDate = jstNow.toDate();
+    // 業務日の計算（AM4時を境界とする）
+    const businessDate =
+      now.hour() < 4
+        ? now.subtract(1, "day").startOf("day")
+        : now.startOf("day");
 
-    if (jstNow.hour() < 4) {
-      jstBusinessDate.setDate(jstBusinessDate.getDate() - 1);
-    }
-    jstBusinessDate.setHours(0, 0, 0, 0);
+    console.log("業務日:", businessDate.format());
 
-    // JSTの業務日をUTCに変換（データベース比較用）
-    const today = dayjs(jstBusinessDate).tz("Asia/Tokyo");
+    // 業務日の範囲
+    const businessDayStart = businessDate.toDate();
+    const businessDayEnd = businessDate
+      .add(1, "day")
+      .hour(3)
+      .minute(59)
+      .second(59)
+      .millisecond(999)
+      .toDate();
 
-    console.log("現在の日時:", now);
-    console.log("今日の日付:", today);
+    console.log("業務日開始:", dayjs(businessDayStart).format());
+    console.log("業務日終了:", dayjs(businessDayEnd).format());
 
+    // 記録を検索
     let record = await prisma.attendanceRecord.findFirst({
       where: {
         userId,
         date: {
-          gte: today.toDate(),
-          lt: new Date(today.toDate().getTime() + 24 * 60 * 60 * 1000),
+          gte: businessDayStart,
+          lte: businessDayEnd,
         },
       },
     });
+
+    console.log("取得した記録:", record);
 
     if (!record) {
       console.log("出社記録が見つからないため、新規作成します");
       record = await prisma.attendanceRecord.create({
         data: {
           userId,
-          date: now,
-          checkIn: now,
+          date: businessDayStart,
+          checkIn: now.toDate(),
         },
       });
+      console.log("新規作成した記録:", record);
     }
 
     // 明示的なチェックを追加
@@ -88,7 +99,7 @@ export default async function handler(
       record = await prisma.attendanceRecord.update({
         where: { id: record.id },
         data: {
-          checkIn: now, // 現在時刻を出社時間として設定
+          checkIn: now.toDate(), // 現在時刻を出社時間として設定
         },
       });
 
@@ -99,7 +110,7 @@ export default async function handler(
     await prisma.attendanceRecord.update({
       where: { id: record.id },
       data: {
-        breakStart: now,
+        breakStart: now.toDate(),
       },
     });
 
@@ -108,7 +119,7 @@ export default async function handler(
       where: { userId },
       data: {
         currentState: "on_break",
-        lastUpdated: now,
+        lastUpdated: now.toDate(),
       },
     });
 

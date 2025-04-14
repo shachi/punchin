@@ -25,11 +25,14 @@ export default async function handler(
     }
 
     const userId = session.user.id;
+    console.log("休憩終了処理開始 - ユーザーID:", userId);
 
     // ユーザー状態を確認
     const userState = await prisma.userState.findUnique({
       where: { userId },
     });
+
+    console.log("現在のユーザー状態:", userState);
 
     if (userState?.currentState !== "on_break") {
       return res.status(400).json({
@@ -38,30 +41,43 @@ export default async function handler(
       });
     }
 
-    // 現在の日時と業務日を取得（日本時間ベース）
-    const now = new Date();
-    const jstNow = dayjs(now).tz("Asia/Tokyo");
+    // 現在時刻（JST）
+    const now = dayjs().tz("Asia/Tokyo");
+    console.log("現在時刻:", now.format());
 
-    // 日本時間で業務日を判定
-    const jstBusinessDate = jstNow.toDate();
+    // 業務日の計算（AM4時を境界とする）
+    const businessDate =
+      now.hour() < 4
+        ? now.subtract(1, "day").startOf("day")
+        : now.startOf("day");
 
-    if (jstNow.hour() < 4) {
-      jstBusinessDate.setDate(jstBusinessDate.getDate() - 1);
-    }
-    jstBusinessDate.setHours(0, 0, 0, 0);
+    console.log("業務日:", businessDate.format());
 
-    // JSTの業務日をUTCに変換（データベース比較用）
-    const today = dayjs(jstBusinessDate).tz("Asia/Tokyo");
+    // 業務日の範囲
+    const businessDayStart = businessDate.toDate();
+    const businessDayEnd = businessDate
+      .add(1, "day")
+      .hour(3)
+      .minute(59)
+      .second(59)
+      .millisecond(999)
+      .toDate();
 
+    console.log("業務日開始:", dayjs(businessDayStart).format());
+    console.log("業務日終了:", dayjs(businessDayEnd).format());
+
+    // 記録を検索
     const record = await prisma.attendanceRecord.findFirst({
       where: {
         userId,
         date: {
-          gte: today.toDate(),
-          lt: new Date(today.toDate().getTime() + 24 * 60 * 60 * 1000),
+          gte: businessDayStart,
+          lte: businessDayEnd,
         },
       },
     });
+
+    console.log("取得した記録:", record);
 
     if (!record) {
       return res
@@ -73,7 +89,7 @@ export default async function handler(
     await prisma.attendanceRecord.update({
       where: { id: record.id },
       data: {
-        breakEnd: new Date(),
+        breakEnd: now.toDate(),
       },
     });
 
@@ -82,9 +98,11 @@ export default async function handler(
       where: { userId },
       data: {
         currentState: "checked_in",
-        lastUpdated: new Date(),
+        lastUpdated: now.toDate(),
       },
     });
+
+    console.log("休憩終了処理完了");
 
     return res.status(200).json({
       success: true,
