@@ -1,10 +1,9 @@
 // pages/dashboard.tsx
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/router";
 import dayjs from "../lib/dayjs";
 import Layout from "../components/Layout";
-import AttendanceButtons from "../components/AttendanceButtons";
 import Clock from "../components/Clock";
 
 // 型定義
@@ -23,6 +22,7 @@ interface AttendanceRecord {
 export default function Dashboard() {
   const router = useRouter();
   const { data: session, status } = useSession();
+  const [isLoading, setIsLoading] = useState(false);
   const [userState, setUserState] = useState("loading");
   const [record, setRecord] = useState<AttendanceRecord | null>(null);
   const [message, setMessage] = useState({ text: "", type: "" });
@@ -38,82 +38,91 @@ export default function Dashboard() {
     }
   }, [status, router]);
 
-  // 状態取得を強化
-  const fetchUserState = async (retryCount = 0) => {
-    try {
-      console.log("Fetching user state...");
-      const timestamp = new Date().getTime();
-      const response = await fetch("/api/attendance/state");
+  // 状態取得を強化 - useCallbackで関数を安定化
+  const fetchUserState = useCallback(
+    async (retryCount = 0) => {
+      try {
+        setIsLoading(true);
+        console.log("Fetching user state...");
+        try {
+          const response = await fetch("/api/attendance/state");
 
-      if (!response.ok) {
-        // エラーレスポンスの内容を確認
-        const errorText = await response.text();
-        console.error("API error response:", errorText);
+          if (!response.ok) {
+            // エラーレスポンスの内容を確認
+            const errorText = await response.text();
+            console.error("API error response:", errorText);
 
-        // 一時的なエラー（502, 503, 504）の場合はリトライ
-        if ([502, 503, 504].includes(response.status) && retryCount < 3) {
-          console.log(
-            `一時的なエラーが発生しました(${response.status})。再試行します(${retryCount + 1}/3)...`,
-          );
+            // 一時的なエラー（502, 503, 504）の場合はリトライ
+            if ([502, 503, 504].includes(response.status) && retryCount < 3) {
+              console.log(
+                `一時的なエラーが発生しました(${response.status})。再試行します(${retryCount + 1}/3)...`,
+              );
 
-          // 少し待ってからリトライ
-          await new Promise((resolve) => setTimeout(resolve, 2000));
-          return fetchUserState(retryCount + 1);
+              // 少し待ってからリトライ
+              await new Promise((resolve) => setTimeout(resolve, 2000));
+              return fetchUserState(retryCount + 1);
+            }
+            throw new Error(`状態の取得に失敗しました - ${response.status}`);
+          }
+
+          const data = await response.json();
+          console.log("State API response:", data);
+
+          if (data.success) {
+            // 状態を更新
+            setUserState(data.currentState || "not_checked_in");
+            setRecord(data.record);
+
+            // 日付変更の通知
+            if (data.dateChanged) {
+              setMessage({
+                text: "業務日が変わりました。新しい日の勤怠を記録できます。",
+                type: "info",
+              });
+            }
+            // エラーメッセージがあれば削除
+            if (message.type === "error") {
+              setMessage({ text: "", type: "" });
+            }
+          } else {
+            setMessage({
+              text: data.message || "状態の取得に失敗しました",
+              type: "error",
+            });
+          }
+        } catch (error) {
+          console.error("Error fetching state:", error);
+
+          // リトライロジック
+          if (retryCount < 3) {
+            console.log(
+              `エラーが発生しました。再試行します(${retryCount + 1}/3)...`,
+            );
+            setMessage({
+              text: `状態の取得中にエラーが発生しました。再試行中...(${retryCount + 1}/3)`,
+              type: "warning",
+            });
+
+            // 少し待ってからリトライ
+            setTimeout(
+              () => fetchUserState(retryCount + 1),
+              3000 * (retryCount + 1),
+            );
+          } else {
+            setMessage({
+              text: "状態の取得に失敗しました。ページを更新してください。",
+              type: "error",
+            });
+          }
         }
-        throw new Error(`状態の取得に失敗しました - ${response.status}`);
+      } catch (error) {
+        console.error("Error fetching user status:", error);
+      } finally {
+        setIsLoading(false);
       }
-
-      const data = await response.json();
-      console.log("State API response:", data);
-
-      if (data.success) {
-        // 状態を更新
-        setUserState(data.currentState || "not_checked_in");
-        setRecord(data.record);
-
-        // 日付変更の通知
-        if (data.dateChanged) {
-          setMessage({
-            text: "業務日が変わりました。新しい日の勤怠を記録できます。",
-            type: "info",
-          });
-        }
-        // エラーメッセージがあれば削除
-        if (message.type === "error") {
-          setMessage({ text: "", type: "" });
-        }
-      } else {
-        setMessage({
-          text: data.message || "状態の取得に失敗しました",
-          type: "error",
-        });
-      }
-    } catch (error) {
-      console.error("Error fetching state:", error);
-
-      // リトライロジック
-      if (retryCount < 3) {
-        console.log(
-          `エラーが発生しました。再試行します(${retryCount + 1}/3)...`,
-        );
-        setMessage({
-          text: `状態の取得中にエラーが発生しました。再試行中...(${retryCount + 1}/3)`,
-          type: "warning",
-        });
-
-        // 少し待ってからリトライ
-        setTimeout(
-          () => fetchUserState(retryCount + 1),
-          3000 * (retryCount + 1),
-        );
-      } else {
-        setMessage({
-          text: "状態の取得に失敗しました。ページを更新してください。",
-          type: "error",
-        });
-      }
-    }
-  };
+    },
+    [message.type],
+  );
 
   // 出社ボタンクリック時の処理
   const handleCheckIn = async () => {
@@ -150,7 +159,6 @@ export default function Dashboard() {
   };
 
   // 日付変更の検出用タイマー
-  // 日付変更の検出用タイマー
   useEffect(() => {
     if (session) {
       // 1分ごとにチェック
@@ -171,7 +179,14 @@ export default function Dashboard() {
 
       return () => clearInterval(timer);
     }
-  }, [session]);
+  }, [session, fetchUserState]);
+
+  // コンポーネントマウント時に状態を取得
+  useEffect(() => {
+    if (session) {
+      fetchUserState();
+    }
+  }, [session, fetchUserState]);
 
   // 勤怠ステータスを表示するためのヘルパー関数
   const getStatusText = (state: string) => {
@@ -346,9 +361,10 @@ export default function Dashboard() {
               {userState === "not_checked_in" && (
                 <button
                   onClick={handleCheckIn}
-                  className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded"
+                  disabled={isLoading}
+                  className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded disabled:opacity-50"
                 >
-                  出社
+                  {isLoading ? "処理中..." : "出社"}
                 </button>
               )}
 
@@ -356,6 +372,8 @@ export default function Dashboard() {
               {userState === "checked_in" && (
                 <button
                   onClick={() => {
+                    setIsLoading(true);
+                    setMessage({ text: "処理中...", type: "info" });
                     fetch("/api/attendance/start-break", { method: "POST" })
                       .then((res) => res.json())
                       .then((data) => {
@@ -376,11 +394,15 @@ export default function Dashboard() {
                           text: "エラーが発生しました",
                           type: "error",
                         });
+                      })
+                      .finally(() => {
+                        setIsLoading(false);
                       });
                   }}
-                  className="bg-yellow-500 hover:bg-yellow-600 text-white font-medium py-3 px-4 rounded-md transition duration-150 shadow-sm"
+                  disabled={isLoading}
+                  className="bg-yellow-500 hover:bg-yellow-600 text-white font-medium py-3 px-4 rounded-md transition duration-150 shadow-sm disabled:opacity-50"
                 >
-                  休憩開始
+                  {isLoading ? "処理中..." : "休憩開始"}
                 </button>
               )}
 
@@ -388,6 +410,8 @@ export default function Dashboard() {
               {userState === "on_break" && (
                 <button
                   onClick={() => {
+                    setIsLoading(true);
+                    setMessage({ text: "処理中...", type: "info" });
                     fetch("/api/attendance/end-break", { method: "POST" })
                       .then((res) => res.json())
                       .then((data) => {
@@ -408,11 +432,15 @@ export default function Dashboard() {
                           text: "エラーが発生しました",
                           type: "error",
                         });
+                      })
+                      .finally(() => {
+                        setIsLoading(false);
                       });
                   }}
-                  className="bg-yellow-500 hover:bg-yellow-600 text-white font-medium py-3 px-4 rounded-md transition duration-150 shadow-sm"
+                  disabled={isLoading}
+                  className="bg-yellow-500 hover:bg-yellow-600 text-white font-medium py-3 px-4 rounded-md transition duration-150 shadow-sm disabled:opacity-50"
                 >
-                  休憩終了
+                  {isLoading ? "処理中..." : "休憩終了"}
                 </button>
               )}
 
@@ -422,6 +450,8 @@ export default function Dashboard() {
                   onClick={() => {
                     // 確認ダイアログを表示
                     if (confirm("本当に今日の業務終了でよろしいでしょうか？")) {
+                      setIsLoading(true);
+                      setMessage({ text: "処理中...", type: "info" });
                       fetch("/api/attendance/check-out", { method: "POST" })
                         .then((res) => res.json())
                         .then((data) => {
@@ -442,12 +472,16 @@ export default function Dashboard() {
                             text: "エラーが発生しました",
                             type: "error",
                           });
+                        })
+                        .finally(() => {
+                          setIsLoading(false);
                         });
                     }
                   }}
-                  className="bg-green-500 hover:bg-green-600 text-white font-medium py-3 px-4 rounded-md transition duration-150 shadow-sm"
+                  disabled={isLoading}
+                  className="bg-green-500 hover:bg-green-600 text-white font-medium py-3 px-4 rounded-md transition duration-150 shadow-sm disabled:opacity-50"
                 >
-                  退社
+                  {isLoading ? "処理中..." : "退社"}
                 </button>
               )}
               {/* 再出社ボタン */}
@@ -456,6 +490,8 @@ export default function Dashboard() {
                   onClick={() => {
                     // 確認ダイアログを表示
                     if (confirm("再出社でよろしいでしょうか？")) {
+                      setIsLoading(true);
+                      setMessage({ text: "処理中...", type: "info" });
                       fetch("/api/attendance/recheck-in", { method: "POST" })
                         .then((res) => res.json())
                         .then((data) => {
@@ -476,12 +512,16 @@ export default function Dashboard() {
                             text: "エラーが発生しました",
                             type: "error",
                           });
+                        })
+                        .finally(() => {
+                          setIsLoading(false);
                         });
                     }
                   }}
-                  className="bg-blue-500 hover:bg-blue-600 text-white font-medium py-3 px-4 rounded-md transition duration-150 shadow-sm"
+                  disabled={isLoading}
+                  className="bg-blue-500 hover:bg-blue-600 text-white font-medium py-3 px-4 rounded-md transition duration-150 shadow-sm disabled:opacity-50"
                 >
-                  再出社
+                  {isLoading ? "処理中..." : "再出社"}
                 </button>
               )}
 
@@ -490,6 +530,8 @@ export default function Dashboard() {
                 <button
                   onClick={() => {
                     if (confirm("本日を欠勤として記録しますか？")) {
+                      setIsLoading(true);
+                      setMessage({ text: "処理中...", type: "info" });
                       fetch("/api/attendance/absent", { method: "POST" })
                         .then((res) => res.json())
                         .then((data) => {
@@ -510,12 +552,16 @@ export default function Dashboard() {
                             text: "エラーが発生しました",
                             type: "error",
                           });
+                        })
+                        .finally(() => {
+                          setIsLoading(false);
                         });
                     }
                   }}
-                  className="bg-red-500 hover:bg-red-600 text-white font-medium py-3 px-4 rounded-md transition duration-150 shadow-sm"
+                  disabled={isLoading}
+                  className="bg-red-500 hover:bg-red-600 text-white font-medium py-3 px-4 rounded-md transition duration-150 shadow-sm disabled:opacity-50"
                 >
-                  欠勤
+                  {isLoading ? "処理中..." : "欠勤"}
                 </button>
               )}
             </div>

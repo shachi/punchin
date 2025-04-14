@@ -25,11 +25,14 @@ export default async function handler(
     }
 
     const userId = session.user.id;
+    console.log("退社処理開始 - ユーザーID:", userId);
 
     // ユーザー状態を確認
     const userState = await prisma.userState.findUnique({
       where: { userId },
     });
+
+    console.log("現在のユーザー状態:", userState);
 
     if (userState?.currentState !== "checked_in") {
       return res
@@ -39,12 +42,15 @@ export default async function handler(
 
     // 現在時刻（JST）
     const now = dayjs().tz("Asia/Tokyo");
+    console.log("現在時刻:", now.format());
 
     // 業務日の計算（AM4時を境界とする）
     const businessDate =
       now.hour() < 4
         ? now.subtract(1, "day").startOf("day")
         : now.startOf("day");
+
+    console.log("業務日:", businessDate.format());
 
     // 業務日の範囲
     const businessDayStart = businessDate.toDate();
@@ -56,16 +62,21 @@ export default async function handler(
       .millisecond(999)
       .toDate();
 
+    console.log("業務日開始:", dayjs(businessDayStart).format());
+    console.log("業務日終了:", dayjs(businessDayEnd).format());
+
     // 記録を検索
     const record = await prisma.attendanceRecord.findFirst({
       where: {
         userId,
         date: {
           gte: businessDayStart,
-          lt: businessDayEnd,
+          lte: businessDayEnd,
         },
       },
     });
+
+    console.log("取得した記録:", record);
 
     if (!record) {
       return res
@@ -77,7 +88,7 @@ export default async function handler(
     await prisma.attendanceRecord.update({
       where: { id: record.id },
       data: {
-        checkOut: new Date(),
+        checkOut: now.toDate(),
       },
     });
 
@@ -86,9 +97,11 @@ export default async function handler(
       where: { userId },
       data: {
         currentState: "checked_out",
-        lastUpdated: new Date(),
+        lastUpdated: now.toDate(),
       },
     });
+
+    console.log("退社処理完了");
 
     return res.status(200).json({
       success: true,
