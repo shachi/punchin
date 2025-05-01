@@ -22,17 +22,21 @@ interface AttendanceRecord {
 export default function AdminDashboard() {
   const router = useRouter();
   const { data: session, status } = useSession();
-  // 現在の年月
-  const [currentMonth, setCurrentMonth] = useState(new Date());
+
+  // 現在の年月 - 日本時間ベース
+  const [currentMonth, setCurrentMonth] = useState(() => {
+    return dayjs().tz("Asia/Tokyo").toDate();
+  });
+
   // 選択された期間の開始日・終了日
   const [startDate, setStartDate] = useState<string>(() => {
-    const firstDay = dayjs(currentMonth).startOf("month");
-    return dayjs(firstDay).format("YYYY-MM-DD");
+    const firstDay = dayjs(currentMonth).tz("Asia/Tokyo").startOf("month");
+    return firstDay.format("YYYY-MM-DD");
   });
 
   const [endDate, setEndDate] = useState<string>(() => {
-    const lastDay = dayjs(currentMonth).endOf("month");
-    return dayjs(lastDay).format("YYYY-MM-DD");
+    const lastDay = dayjs(currentMonth).tz("Asia/Tokyo").endOf("month");
+    return lastDay.format("YYYY-MM-DD");
   });
 
   // 既存の状態変数
@@ -46,26 +50,40 @@ export default function AdminDashboard() {
   const [pageSize, setPageSize] = useState(10);
   const [total, setTotal] = useState(0);
 
-  // 月が変更されたら日付範囲を更新
+  // 月が変更されたら日付範囲を更新 - 日本時間ベース
   useEffect(() => {
-    const firstDay = dayjs(currentMonth).startOf("month");
-    const lastDay = dayjs(currentMonth).endOf("month");
-    setStartDate(dayjs(firstDay).format("YYYY-MM-DD"));
-    setEndDate(dayjs(lastDay).format("YYYY-MM-DD"));
+    try {
+      const firstDay = dayjs(currentMonth).tz("Asia/Tokyo").startOf("month");
+      const lastDay = dayjs(currentMonth).tz("Asia/Tokyo").endOf("month");
+      console.log("月の初日 (JST):", firstDay.format("YYYY-MM-DD"));
+      console.log("月の最終日 (JST):", lastDay.format("YYYY-MM-DD"));
+      setStartDate(firstDay.format("YYYY-MM-DD"));
+      setEndDate(lastDay.format("YYYY-MM-DD"));
+      setCurrentPage(1); // 月が変わったら1ページ目に戻す
+    } catch (error) {
+      console.error("Date format error:", error);
+      // エラー時はデフォルト値を設定
+      const now = dayjs().tz("Asia/Tokyo");
+      setStartDate(now.startOf("month").format("YYYY-MM-DD"));
+      setEndDate(now.endOf("month").format("YYYY-MM-DD"));
+    }
   }, [currentMonth]);
 
-  // 前月へ
+  // 前月へ - 日本時間ベース
   const goToPreviousMonth = () => {
     setCurrentMonth((prevMonth) =>
-      dayjs(prevMonth).subtract(1, "month").toDate(),
+      dayjs(prevMonth).tz("Asia/Tokyo").subtract(1, "month").toDate(),
     );
   };
 
-  // 翌月へ
+  // 翌月へ - 日本時間ベース
   const goToNextMonth = () => {
-    setCurrentMonth((prevMonth) => dayjs(prevMonth).add(1, "month").toDate());
+    setCurrentMonth((prevMonth) =>
+      dayjs(prevMonth).tz("Asia/Tokyo").add(1, "month").toDate(),
+    );
   };
 
+  // 記録取得
   const fetchRecords = async (page = currentPage) => {
     setLoading(true);
     setError("");
@@ -73,6 +91,7 @@ export default function AdminDashboard() {
     try {
       // URLにページングパラメータを追加
       const url = `/api/admin/attendance?startDate=${startDate}&endDate=${endDate}&page=${page}&pageSize=${pageSize}`;
+      console.log("日本時間での検索範囲:", startDate, "から", endDate);
       console.log("Fetching records from:", url);
 
       const response = await fetch(url);
@@ -84,6 +103,8 @@ export default function AdminDashboard() {
       }
 
       const data = await response.json();
+      console.log("API response status:", data.success);
+      console.log(`Received ${data.records?.length || 0} records`);
 
       if (data.success) {
         setRecords(data.records);
@@ -109,6 +130,31 @@ export default function AdminDashboard() {
     }
   };
 
+  // 時刻のフォーマット - 日本時間ベース
+  const formatTime = (timeString: string | null) => {
+    if (!timeString) return "-";
+    try {
+      return dayjs(timeString).tz("Asia/Tokyo").format("HH:mm:ss");
+    } catch (error) {
+      console.error("Time format error:", error, timeString);
+      return "-";
+    }
+  };
+
+  // 日付のフォーマット - 日本時間ベース
+  const formatDate = (dateString: string) => {
+    if (!dateString) return "-";
+    try {
+      return dayjs(dateString).tz("Asia/Tokyo").format("YYYY/MM/DD (ddd)");
+    } catch (error) {
+      console.error("Date format error:", error, dateString);
+      return "-";
+    }
+  };
+
+  // 表示時のフォーマット - 日本時間ベース
+  const monthDisplay = dayjs(currentMonth).tz("Asia/Tokyo").format("YYYY年M月");
+
   // ページ変更ハンドラ
   const handlePageChange = (newPage: number) => {
     if (newPage >= 1 && newPage <= totalPages) {
@@ -116,25 +162,6 @@ export default function AdminDashboard() {
       fetchRecords(newPage);
     }
   };
-
-  // 月が変更されたら日付範囲を更新し、1ページ目から表示
-  useEffect(() => {
-    try {
-      const firstDay = dayjs(currentMonth).startOf("month");
-      const lastDay = dayjs(currentMonth).endOf("month");
-      console.log("月の初日:", firstDay.format("YYYY-MM-DD"));
-      console.log("月の最終日:", lastDay.format("YYYY-MM-DD"));
-      setStartDate(firstDay.format("YYYY-MM-DD"));
-      setEndDate(lastDay.format("YYYY-MM-DD"));
-      setCurrentPage(1); // 月が変わったら1ページ目に戻す
-    } catch (error) {
-      console.error("Date format error:", error);
-      // エラー時はデフォルト値を設定
-      const now = dayjs();
-      setStartDate(now.startOf("month").format("YYYY-MM-DD"));
-      setEndDate(now.endOf("month").format("YYYY-MM-DD"));
-    }
-  }, [currentMonth]);
 
   // 日付範囲が変更されたら記録を取得
   useEffect(() => {
@@ -239,34 +266,10 @@ export default function AdminDashboard() {
     return null;
   }
 
+  // CSV出力用
   const handleDownloadCSV = () => {
     window.location.href = `/api/admin/export-csv?startDate=${startDate}&endDate=${endDate}`;
   };
-
-  // 時刻のフォーマット - エラーハンドリングを追加
-  const formatTime = (timeString: string | null) => {
-    if (!timeString) return "-";
-    try {
-      return dayjs(timeString).format("HH:mm:ss");
-    } catch (error) {
-      console.error("Time format error:", error, timeString);
-      return "-";
-    }
-  };
-
-  // 日付のフォーマット - エラーハンドリングを追加
-  const formatDate = (dateString: string) => {
-    if (!dateString) return "-";
-    try {
-      return dayjs(dateString).format("YYYY/MM/DD (ddd)");
-    } catch (error) {
-      console.error("Date format error:", error, dateString);
-      return "-";
-    }
-  };
-
-  // 表示時のフォーマット
-  const monthDisplay = dayjs(currentMonth).format("YYYY年M月");
 
   // CSVエクスポート（月単位）
   const handleExportMonthlyCSV = () => {
