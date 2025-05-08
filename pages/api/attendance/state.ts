@@ -27,6 +27,13 @@ export default async function handler(
     const userId = session.user.id;
     console.log("状態取得 - ユーザーID:", userId);
 
+    // セッション情報のデバッグ
+    console.log("セッション情報:", {
+      id: session.user.id,
+      email: session.user.email,
+      name: session.user.name,
+    });
+
     // 現在時刻（JST）
     const now = dayjs().tz("Asia/Tokyo");
     console.log("現在時刻(JST):", now.format("YYYY-MM-DD HH:mm:ss"));
@@ -46,22 +53,55 @@ export default async function handler(
 
     console.log("現在のユーザー状態:", userState?.currentState);
 
-    // 状態がない場合は作成
-    if (!userState) {
-      const newState = await prisma.userState.create({
-        data: {
-          userId,
-          currentState: "not_checked_in",
-          lastUpdated: now.toDate(),
-        },
-      });
+    // ユーザーが存在するか確認（エラーを返さない）
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true },
+    });
 
+    if (!user) {
+      console.warn(`ユーザーID ${userId} が見つかりません`);
+      // ユーザーがいない場合も404を返さずに、フロントエンドで表示できる情報を返す
       return res.status(200).json({
-        success: true,
+        success: false,
+        message:
+          "ユーザー情報が見つかりません。ログアウト後に再度ログインしてください。",
         currentState: "not_checked_in",
         record: null,
         dateChanged: false,
       });
+    }
+
+    // 状態がない場合は作成
+    if (!userState) {
+      try {
+        console.log("ユーザー状態を新規作成します");
+        const newState = await prisma.userState.create({
+          data: {
+            userId, // 既に存在するユーザーID
+            currentState: "not_checked_in",
+            lastUpdated: now.toDate(),
+          },
+        });
+
+        return res.status(200).json({
+          success: true,
+          currentState: "not_checked_in",
+          record: null,
+          dateChanged: false,
+        });
+      } catch (createError) {
+        console.error("ユーザー状態の作成に失敗:", createError);
+        // エラーが発生しても200を返してフロントエンドでハンドリングできるようにする
+        return res.status(200).json({
+          success: false,
+          message:
+            "ユーザー状態の作成に失敗しました。しばらく経ってから再度お試しください。",
+          currentState: "not_checked_in",
+          record: null,
+          dateChanged: false,
+        });
+      }
     }
 
     // 前回更新時の業務日を計算（JSTベース）
@@ -151,8 +191,13 @@ export default async function handler(
     });
   } catch (error) {
     console.error("Error fetching user state:", error);
-    return res
-      .status(500)
-      .json({ success: false, message: "サーバーエラーが発生しました" });
+    // エラーが発生しても200を返してフロントエンドでハンドリングできるようにする
+    return res.status(200).json({
+      success: false,
+      message: "サーバーエラーが発生しました",
+      currentState: "not_checked_in",
+      record: null,
+      dateChanged: false,
+    });
   }
 }

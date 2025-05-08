@@ -5,6 +5,7 @@ import { useRouter } from "next/router";
 import dayjs from "../lib/dayjs";
 import Layout from "../components/Layout";
 import Clock from "../components/Clock";
+import TimeEditModal from "../components/TimeEditModal";
 
 // 型定義
 interface AttendanceRecord {
@@ -19,6 +20,12 @@ interface AttendanceRecord {
   createdAt: string;
 }
 
+interface EditRequest {
+  id: string;
+  field: string;
+  status: string;
+}
+
 export default function Dashboard() {
   const router = useRouter();
   const { data: session, status } = useSession();
@@ -26,6 +33,10 @@ export default function Dashboard() {
   const [userState, setUserState] = useState("loading");
   const [record, setRecord] = useState<AttendanceRecord | null>(null);
   const [message, setMessage] = useState({ text: "", type: "" });
+
+  // 修正モーダル関連の状態
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editRequests, setEditRequests] = useState<EditRequest[]>([]);
 
   // セッション状態に基づくリダイレクト処理
   useEffect(() => {
@@ -37,6 +48,72 @@ export default function Dashboard() {
       router.push("/login"); // 認証されていない場合はログインページへ
     }
   }, [status, router]);
+
+  // 修正モーダルの成功時コールバック
+  const handleEditSuccess = () => {
+    // 最新の状態を再取得
+    fetchUserState();
+    // メッセージを表示
+    setMessage({
+      text: "修正申請を送信しました。管理者の承認をお待ちください。",
+      type: "success",
+    });
+  };
+
+  // 修正リクエストの状態を取得する関数
+  const fetchEditRequests = async () => {
+    try {
+      const response = await fetch("/api/attendance/edit-requests");
+      if (!response.ok) {
+        throw new Error("修正申請の取得に失敗しました");
+      }
+
+      const data = await response.json();
+      if (data.success) {
+        setEditRequests(data.requests);
+      }
+    } catch (error) {
+      console.error("Error fetching edit requests:", error);
+    }
+  };
+
+  useEffect(() => {
+    if (session) {
+      fetchEditRequests();
+    }
+  }, [session]);
+
+  // 修正リクエストの状態を表示する関数
+  const renderEditRequestStatus = (field: string) => {
+    if (!editRequests?.length) return null;
+
+    const request = editRequests.find((req) => req.field === field);
+    if (!request) return null;
+
+    let statusText = "";
+    let statusClass = "";
+
+    switch (request.status) {
+      case "pending":
+        statusText = "承認待ち";
+        statusClass = "bg-yellow-100 text-yellow-800";
+        break;
+      case "approved":
+        statusText = "承認済み";
+        statusClass = "bg-green-100 text-green-800";
+        break;
+      case "rejected":
+        statusText = "拒否";
+        statusClass = "bg-red-100 text-red-800";
+        break;
+    }
+
+    return (
+      <span className={`ml-2 text-xs px-2 py-1 rounded-full ${statusClass}`}>
+        {statusText}
+      </span>
+    );
+  };
 
   // 状態取得を強化 - useCallbackで関数を安定化
   const fetchUserState = useCallback(
@@ -62,7 +139,22 @@ export default function Dashboard() {
               await new Promise((resolve) => setTimeout(resolve, 2000));
               return fetchUserState(retryCount + 1);
             }
-            throw new Error(`状態の取得に失敗しました - ${response.status}`);
+
+            // 404エラーの場合はログアウトを促す（セッション切れの可能性）
+            if (response.status === 404) {
+              setMessage({
+                text: "ユーザー情報が見つかりません。ログアウト後に再度ログインしてください。",
+                type: "error",
+              });
+              return;
+            }
+
+            // その他のエラー
+            setMessage({
+              text: `状態の取得に失敗しました (${response.status})`,
+              type: "error",
+            });
+            return;
           }
 
           const data = await response.json();
@@ -89,6 +181,18 @@ export default function Dashboard() {
               text: data.message || "状態の取得に失敗しました",
               type: "error",
             });
+
+            // ステータスは一応設定する
+            if (data.currentState) {
+              setUserState(data.currentState);
+            }
+
+            // レコードも設定
+            if (data.record) {
+              setRecord(data.record);
+            }
+
+            return;
           }
         } catch (error) {
           console.error("Error fetching state:", error);
@@ -568,9 +672,31 @@ export default function Dashboard() {
           </div>
           {record && (
             <div className="bg-gray-50 rounded-lg p-6">
-              <h2 className="text-lg font-medium text-gray-700 mb-4">
-                今日の記録
-              </h2>
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-lg font-medium text-gray-700">
+                  今日の記録
+                </h2>
+                <button
+                  onClick={() => setIsEditModalOpen(true)}
+                  className="text-blue-600 hover:text-blue-800 text-sm flex items-center"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-4 w-4 mr-1"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                    />
+                  </svg>
+                  修正申請
+                </button>
+              </div>
               <table className="min-w-full divide-y divide-gray-200">
                 <tbody className="divide-y divide-gray-200">
                   <tr>
@@ -581,6 +707,7 @@ export default function Dashboard() {
                       {record.checkIn
                         ? new Date(record.checkIn).toLocaleTimeString()
                         : "-"}
+                      {renderEditRequestStatus("checkIn")}
                     </td>
                   </tr>
                   <tr>
@@ -591,6 +718,7 @@ export default function Dashboard() {
                       {record.breakStart
                         ? new Date(record.breakStart).toLocaleTimeString()
                         : "-"}
+                      {renderEditRequestStatus("breakStart")}
                     </td>
                   </tr>
                   <tr>
@@ -601,6 +729,7 @@ export default function Dashboard() {
                       {record.breakEnd
                         ? new Date(record.breakEnd).toLocaleTimeString()
                         : "-"}
+                      {renderEditRequestStatus("breakEnd")}
                     </td>
                   </tr>
                   <tr>
@@ -611,6 +740,7 @@ export default function Dashboard() {
                       {record.checkOut
                         ? new Date(record.checkOut).toLocaleTimeString()
                         : "-"}
+                      {renderEditRequestStatus("checkOut")}
                     </td>
                   </tr>
                   <tr>
@@ -623,6 +753,18 @@ export default function Dashboard() {
                   </tr>
                 </tbody>
               </table>
+
+              {/* 修正モーダル */}
+              <TimeEditModal
+                isOpen={isEditModalOpen}
+                onClose={() => setIsEditModalOpen(false)}
+                recordId={record.id}
+                checkIn={record.checkIn}
+                checkOut={record.checkOut}
+                breakStart={record.breakStart}
+                breakEnd={record.breakEnd}
+                onSubmitSuccess={handleEditSuccess}
+              />
             </div>
           )}
         </div>

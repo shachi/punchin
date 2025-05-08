@@ -283,7 +283,6 @@ export default function AdminDashboard() {
           <h1 className="text-2xl font-bold text-gray-800 mb-4">
             勤怠管理 - 管理者ダッシュボード
           </h1>
-
           {/* 月選択UI */}
           <div className="mb-6">
             <div className="flex items-center justify-between bg-gray-50 rounded-lg p-4">
@@ -304,7 +303,6 @@ export default function AdminDashboard() {
               </button>
             </div>
           </div>
-
           <div className="flex justify-between mb-4">
             <div className="flex space-x-2">
               <button
@@ -334,9 +332,30 @@ export default function AdminDashboard() {
                 </svg>
                 月次CSVエクスポート
               </button>
+
+              {/* 時刻修正申請ページへのリンクボタン */}
+              <button
+                onClick={() => router.push("/admin/edit-requests")}
+                className="bg-purple-500 hover:bg-purple-600 text-white font-medium py-2 px-4 rounded flex items-center"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-5 w-5 mr-1"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                  />
+                </svg>
+                時刻修正申請
+              </button>
             </div>
           </div>
-
           {error && (
             <div
               className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6"
@@ -345,7 +364,6 @@ export default function AdminDashboard() {
               <p>{error}</p>
             </div>
           )}
-
           <div className="bg-gray-50 rounded-lg p-6 mb-6">
             <h2 className="text-lg font-medium text-gray-700 mb-4">勤怠記録</h2>
 
