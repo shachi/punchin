@@ -116,7 +116,18 @@ export default function EditRequests() {
     try {
       return dayjs(dateStr).tz("Asia/Tokyo").format("HH:mm:ss");
     } catch (err) {
-      console.error("Time format error:", err);
+      console.error("Time format error:", err, dateStr);
+      return "-";
+    }
+  };
+
+  // 日時フォーマット（日本時間）
+  const formatDateTime = (dateStr: string | null): string => {
+    if (!dateStr) return "-";
+    try {
+      return dayjs(dateStr).tz("Asia/Tokyo").format("YYYY/MM/DD HH:mm");
+    } catch (err) {
+      console.error("DateTime format error:", err, dateStr);
       return "-";
     }
   };
@@ -211,7 +222,7 @@ export default function EditRequests() {
                   {requests.map((request) => (
                     <tr key={request.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {dayjs(request.createdAt).format("YYYY/MM/DD HH:mm")}
+                        {formatDateTime(request.createdAt)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                         {request.user?.name || "不明"}
