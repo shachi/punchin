@@ -95,8 +95,12 @@ export default function TimeEditModal({
     try {
       // 現在の日付を取得（日本時間）
       const today = dayjs().tz("Asia/Tokyo").format("YYYY-MM-DD");
-      // 時刻を日付と結合して完全な日時にする
-      const fullDateTime = `${today}T${newValue}:00`;
+
+      // 時刻を日付と結合して完全な日時にする（明示的に日本時間として指定）
+      // この部分が重要です - タイムゾーンを明示的に指定
+      const fullDateTime = dayjs
+        .tz(`${today} ${newValue}:00`, "YYYY-MM-DD HH:mm:ss", "Asia/Tokyo")
+        .format();
 
       const response = await fetch("/api/attendance/edit-request", {
         method: "POST",
@@ -216,7 +220,9 @@ export default function TimeEditModal({
             </div>
 
             <div>
-              <label className="block text-gray-700 mb-2">新しい時間</label>
+              <label className="block text-gray-700 mb-2">
+                新しい時間 (JST)
+              </label>
               <input
                 type="time"
                 value={

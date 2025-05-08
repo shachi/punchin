@@ -65,14 +65,24 @@ export default async function handler(
       });
     }
 
-    // 指定された日時が有効か確認
-    const parsedNewValue = dayjs(newValue);
+    // ここでクライアントから送られてきた日時を日本時間として解釈
+    // クライアント側から送られる日時がISO形式で、タイムゾーン情報が含まれている場合
+    const parsedNewValue = dayjs(newValue).tz("Asia/Tokyo");
+
     if (!parsedNewValue.isValid()) {
       return res.status(400).json({
         success: false,
         message: "無効な日時形式です",
       });
     }
+
+    // タイムゾーン情報をログ出力して確認
+    console.log("受信した時間値:", newValue);
+    console.log(
+      "パース後の日本時間:",
+      parsedNewValue.format("YYYY-MM-DD HH:mm:ss"),
+    );
+    console.log("UTC時間に変換:", parsedNewValue.toDate());
 
     // 現在の値を取得
     let oldValue = null;
@@ -98,7 +108,7 @@ export default async function handler(
         recordId,
         field,
         oldValue,
-        newValue: parsedNewValue.toDate(),
+        newValue: parsedNewValue.toDate(), // 日本時間を正しくDateオブジェクトに変換
         reason,
         status: "pending", // 初期状態は「保留中」
       },

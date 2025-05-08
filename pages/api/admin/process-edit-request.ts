@@ -3,6 +3,32 @@ import { NextApiRequest, NextApiResponse } from "next";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
 import { prisma } from "../../../lib/prisma";
+import dayjs from "../../../lib/dayjs";
+import { AttendanceRecord } from "@prisma/client";
+
+// フィールドの型を安全に指定するための型
+type AttendanceTimeField = "checkIn" | "checkOut" | "breakStart" | "breakEnd";
+
+// フィールド名からプロパティを安全に取得する関数
+function getTimeFieldValue(
+  record: AttendanceRecord | null,
+  fieldName: string,
+): Date | null {
+  if (!record) return null;
+
+  switch (fieldName) {
+    case "checkIn":
+      return record.checkIn;
+    case "checkOut":
+      return record.checkOut;
+    case "breakStart":
+      return record.breakStart;
+    case "breakEnd":
+      return record.breakEnd;
+    default:
+      return null;
+  }
+}
 
 export default async function handler(
   req: NextApiRequest,
@@ -68,6 +94,31 @@ export default async function handler(
       });
     }
 
+    // フィールド名のバリデーション
+    if (
+      !["checkIn", "checkOut", "breakStart", "breakEnd"].includes(request.field)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "無効なフィールドです",
+      });
+    }
+
+    // 修正申請のフィールドを型安全に扱う
+    const fieldName = request.field as AttendanceTimeField;
+
+    // デバッグログ：申請内容の確認
+    console.log("処理する修正申請:", {
+      id: request.id,
+      field: fieldName,
+      oldValue: request.oldValue
+        ? dayjs(request.oldValue).tz("Asia/Tokyo").format("YYYY-MM-DD HH:mm:ss")
+        : null,
+      newValue: dayjs(request.newValue)
+        .tz("Asia/Tokyo")
+        .format("YYYY-MM-DD HH:mm:ss"),
+    });
+
     // トランザクションで申請処理
     await prisma.$transaction(async (tx) => {
       // 申請ステータスを更新
@@ -81,12 +132,37 @@ export default async function handler(
       // 承認の場合は勤怠データを更新
       if (action === "approve") {
         // 型安全な方法でフィールドを更新
-        const fieldToUpdate: Record<string, any> = {};
-        fieldToUpdate[request.field] = request.newValue;
+        const fieldToUpdate: Record<AttendanceTimeField, Date> = {
+          [fieldName]: request.newValue,
+        } as Record<AttendanceTimeField, Date>;
 
-        await tx.attendanceRecord.update({
+        // 更新前のデータを取得
+        const recordBefore = await tx.attendanceRecord.findUnique({
+          where: { id: request.recordId },
+        });
+
+        // 更新前のデータログ
+        const oldValue = getTimeFieldValue(recordBefore, fieldName);
+        console.log("更新前のレコード:", {
+          id: recordBefore?.id,
+          fieldName: oldValue
+            ? dayjs(oldValue).tz("Asia/Tokyo").format("YYYY-MM-DD HH:mm:ss")
+            : null,
+        });
+
+        // レコード更新
+        const updatedRecord = await tx.attendanceRecord.update({
           where: { id: request.recordId },
           data: fieldToUpdate,
+        });
+
+        // 更新後のデータログ
+        const newValue = getTimeFieldValue(updatedRecord, fieldName);
+        console.log("更新後のレコード:", {
+          id: updatedRecord.id,
+          fieldName: newValue
+            ? dayjs(newValue).tz("Asia/Tokyo").format("YYYY-MM-DD HH:mm:ss")
+            : null,
         });
       }
     });
