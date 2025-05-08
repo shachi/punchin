@@ -3,6 +3,7 @@ import { NextApiRequest, NextApiResponse } from "next";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
 import { prisma } from "../../../lib/prisma";
+import dayjs from "../../../lib/dayjs";
 
 export default async function handler(
   req: NextApiRequest,
@@ -51,9 +52,38 @@ export default async function handler(
       },
     });
 
+    // 日本時間に変換したデータをログ出力
+    console.log(
+      "管理者向け修正申請一覧 (JST):",
+      requests.map((req) => ({
+        id: req.id,
+        field: req.field,
+        oldValue: req.oldValue
+          ? dayjs(req.oldValue).tz("Asia/Tokyo").format("YYYY-MM-DD HH:mm:ss Z")
+          : null,
+        newValue: dayjs(req.newValue)
+          .tz("Asia/Tokyo")
+          .format("YYYY-MM-DD HH:mm:ss Z"),
+        status: req.status,
+        createdAt: dayjs(req.createdAt)
+          .tz("Asia/Tokyo")
+          .format("YYYY-MM-DD HH:mm:ss Z"),
+      })),
+    );
+
+    // 日本時間のタイムスタンプに変換してからクライアントに返す
+    const formattedRequests = requests.map((req) => ({
+      ...req,
+      oldValue: req.oldValue
+        ? dayjs(req.oldValue).tz("Asia/Tokyo").toISOString()
+        : null,
+      newValue: dayjs(req.newValue).tz("Asia/Tokyo").toISOString(),
+      createdAt: dayjs(req.createdAt).tz("Asia/Tokyo").toISOString(),
+    }));
+
     return res.status(200).json({
       success: true,
-      requests,
+      requests: formattedRequests,
     });
   } catch (error) {
     console.error("Error fetching edit requests:", error);

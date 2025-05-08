@@ -75,12 +75,28 @@ export default async function handler(
       },
     });
 
-    // クライアント側で使用する情報だけを抽出
+    // タイムゾーン情報をデバッグログに出力
+    console.log(
+      "取得した修正申請:",
+      requests.map((req) => ({
+        id: req.id,
+        field: req.field,
+        oldValue: req.oldValue
+          ? dayjs(req.oldValue).tz("Asia/Tokyo").format("YYYY-MM-DD HH:mm:ss Z")
+          : null,
+        newValue: dayjs(req.newValue)
+          .tz("Asia/Tokyo")
+          .format("YYYY-MM-DD HH:mm:ss Z"),
+        status: req.status,
+      })),
+    );
+
+    // クライアント側で使用する情報だけを抽出し、タイムゾーン情報を適切に処理
     const simplifiedRequests = requests.map((req) => ({
       id: req.id,
       field: req.field,
       status: req.status,
-      createdAt: req.createdAt,
+      createdAt: dayjs(req.createdAt).tz("Asia/Tokyo").format(), // 日本時間に変換して送信
     }));
 
     return res.status(200).json({
