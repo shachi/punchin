@@ -1,7 +1,0 @@
-/* styles/globals.css */
-@import "tailwindcss";
-
-/* 追加のグローバルスタイル */
-body {
-  @apply bg-gray-50;
-}

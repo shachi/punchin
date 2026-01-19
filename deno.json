@@ -1,0 +1,29 @@
+{
+  "tasks": {
+    "dev": "deno run --watch --allow-net --allow-read --allow-write --allow-env --allow-ffi main.ts",
+    "start": "deno run --allow-net --allow-read --allow-write --allow-env --allow-ffi main.ts",
+    "seed": "deno run --allow-read --allow-write --allow-env --allow-ffi src/db/seed.ts",
+    "init-db": "deno run --allow-read --allow-write --allow-env --allow-ffi src/db/init.ts"
+  },
+  "imports": {
+    "hono": "npm:hono@4.6.3",
+    "hono/cookie": "npm:hono@4.6.3/cookie",
+    "hono/deno": "npm:hono@4.6.3/deno",
+    "hono/logger": "npm:hono@4.6.3/logger",
+    "hono/secure-headers": "npm:hono@4.6.3/secure-headers",
+    "hono/jsx": "npm:hono@4.6.3/jsx",
+    "hono/jsx/jsx-runtime": "npm:hono@4.6.3/jsx/jsx-runtime",
+    "@db/sqlite": "jsr:@db/sqlite@0.12",
+    "bcrypt": "npm:bcryptjs@2.4.3",
+    "dayjs": "npm:dayjs@1.11.13",
+    "dayjs/plugin/utc": "npm:dayjs@1.11.13/plugin/utc.js",
+    "dayjs/plugin/timezone": "npm:dayjs@1.11.13/plugin/timezone.js",
+    "dayjs/plugin/customParseFormat": "npm:dayjs@1.11.13/plugin/customParseFormat.js",
+    "dayjs/locale/ja": "npm:dayjs@1.11.13/locale/ja.js",
+    "@std/crypto": "jsr:@std/crypto@1"
+  },
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "jsxImportSource": "hono/jsx"
+  }
+}

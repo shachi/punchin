@@ -1,4 +1,0 @@
-name: PunchIn
-script: npm run start -- --port 5150
-watch: true
-log-date-format: "YYYY-MM-DD HH:mm Z"
