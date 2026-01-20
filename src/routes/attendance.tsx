@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import { getDb, generateId, nowISO } from "../db/client.ts";
 import { getBusinessDayRange } from "../lib/dayjs.ts";
 import { requireAuth } from "../middleware/auth.ts";
+import { logger, createLogContext } from "../lib/logger.ts";
 import type { AppEnv, UserState, AttendanceRecord } from "../types.ts";
 import { DashboardContent } from "../views/pages/DashboardContent.tsx";
 
@@ -44,15 +45,6 @@ function isHtmxRequest(c: any): boolean {
   const rawHxRequest =
     rawHeaders?.get("HX-Request") || rawHeaders?.get("hx-request");
 
-  console.log(
-    "Headers check - hxRequest:",
-    hxRequest,
-    "hxTarget:",
-    hxTarget,
-    "rawHxRequest:",
-    rawHxRequest,
-  );
-
   return hxRequest === "true" || rawHxRequest === "true" || !!hxTarget;
 }
 
@@ -88,10 +80,14 @@ function htmxResponse(
 // 出社
 attendanceRoutes.post("/check-in", async (c) => {
   const user = c.get("user")!;
+  const logCtx = createLogContext(user);
   const db = getDb();
   const { userState, record } = getUserStateAndRecord(user.id);
 
   if (userState?.currentState !== "not_checked_in") {
+    await logger.warn("CHECK_IN", "既に出社済みです", logCtx, {
+      currentState: userState?.currentState,
+    });
     if (isHtmxRequest(c)) {
       return htmxResponse(c, user.id, {
         text: "既に出社済みです",
@@ -108,45 +104,68 @@ attendanceRoutes.post("/check-in", async (c) => {
     );
   }
 
-  const now = nowISO();
-  const { start } = getBusinessDayRange();
+  try {
+    const now = nowISO();
+    const { start } = getBusinessDayRange();
 
-  // 既存レコードがあれば更新、なければ作成
-  if (record) {
-    const updateRecord = db.prepare(
-      "UPDATE AttendanceRecord SET checkIn = ?, isAbsent = 0 WHERE id = ?",
+    // 既存レコードがあれば更新、なければ作成
+    if (record) {
+      const updateRecord = db.prepare(
+        "UPDATE AttendanceRecord SET checkIn = ?, isAbsent = 0 WHERE id = ?",
+      );
+      updateRecord.run(now, record.id);
+    } else {
+      const insertRecord = db.prepare(
+        "INSERT INTO AttendanceRecord (id, userId, date, checkIn, isAbsent) VALUES (?, ?, ?, ?, 0)",
+      );
+      insertRecord.run(generateId(), user.id, start.toISOString(), now);
+    }
+
+    // 状態更新
+    const updateState = db.prepare(
+      "UPDATE UserState SET currentState = ?, lastUpdated = ? WHERE userId = ?",
     );
-    updateRecord.run(now, record.id);
-  } else {
-    const insertRecord = db.prepare(
-      "INSERT INTO AttendanceRecord (id, userId, date, checkIn, isAbsent) VALUES (?, ?, ?, ?, 0)",
+    updateState.run("checked_in", now, user.id);
+
+    await logger.info("CHECK_IN", "出社打刻成功", logCtx);
+
+    if (isHtmxRequest(c)) {
+      return htmxResponse(c, user.id, {
+        text: "出社しました",
+        type: "success",
+      });
+    }
+    return c.json({
+      success: true,
+      message: "出社しました",
+      currentState: "checked_in",
+    });
+  } catch (error) {
+    const err = error instanceof Error ? error : new Error(String(error));
+    await logger.error(
+      "CHECK_IN",
+      "出社打刻中にエラーが発生しました",
+      logCtx,
+      err,
     );
-    insertRecord.run(generateId(), user.id, start.toISOString(), now);
+    throw error;
   }
-
-  // 状態更新
-  const updateState = db.prepare(
-    "UPDATE UserState SET currentState = ?, lastUpdated = ? WHERE userId = ?",
-  );
-  updateState.run("checked_in", now, user.id);
-
-  if (isHtmxRequest(c)) {
-    return htmxResponse(c, user.id, { text: "出社しました", type: "success" });
-  }
-  return c.json({
-    success: true,
-    message: "出社しました",
-    currentState: "checked_in",
-  });
 });
 
 // 休憩開始
 attendanceRoutes.post("/start-break", async (c) => {
   const user = c.get("user")!;
+  const logCtx = createLogContext(user);
   const db = getDb();
   const { userState, record } = getUserStateAndRecord(user.id);
 
   if (userState?.currentState !== "checked_in") {
+    await logger.warn(
+      "START_BREAK",
+      "出社状態でないと休憩を開始できません",
+      logCtx,
+      { currentState: userState?.currentState },
+    );
     if (isHtmxRequest(c)) {
       return htmxResponse(c, user.id, {
         text: "出社状態でないと休憩を開始できません",
@@ -160,6 +179,7 @@ attendanceRoutes.post("/start-break", async (c) => {
   }
 
   if (!record) {
+    await logger.warn("START_BREAK", "出社記録が見つかりません", logCtx);
     if (isHtmxRequest(c)) {
       return htmxResponse(c, user.id, {
         text: "出社記録が見つかりません",
@@ -169,37 +189,57 @@ attendanceRoutes.post("/start-break", async (c) => {
     return c.json({ success: false, message: "出社記録が見つかりません" }, 400);
   }
 
-  const now = nowISO();
-  const updateRecord = db.prepare(
-    "UPDATE AttendanceRecord SET breakStart = ? WHERE id = ?",
-  );
-  updateRecord.run(now, record.id);
+  try {
+    const now = nowISO();
+    const updateRecord = db.prepare(
+      "UPDATE AttendanceRecord SET breakStart = ? WHERE id = ?",
+    );
+    updateRecord.run(now, record.id);
 
-  const updateState = db.prepare(
-    "UPDATE UserState SET currentState = ?, lastUpdated = ? WHERE userId = ?",
-  );
-  updateState.run("on_break", now, user.id);
+    const updateState = db.prepare(
+      "UPDATE UserState SET currentState = ?, lastUpdated = ? WHERE userId = ?",
+    );
+    updateState.run("on_break", now, user.id);
 
-  if (isHtmxRequest(c)) {
-    return htmxResponse(c, user.id, {
-      text: "休憩を開始しました",
-      type: "success",
+    await logger.info("START_BREAK", "休憩開始", logCtx);
+
+    if (isHtmxRequest(c)) {
+      return htmxResponse(c, user.id, {
+        text: "休憩を開始しました",
+        type: "success",
+      });
+    }
+    return c.json({
+      success: true,
+      message: "休憩を開始しました",
+      currentState: "on_break",
     });
+  } catch (error) {
+    const err = error instanceof Error ? error : new Error(String(error));
+    await logger.error(
+      "START_BREAK",
+      "休憩開始中にエラーが発生しました",
+      logCtx,
+      err,
+    );
+    throw error;
   }
-  return c.json({
-    success: true,
-    message: "休憩を開始しました",
-    currentState: "on_break",
-  });
 });
 
 // 休憩終了
 attendanceRoutes.post("/end-break", async (c) => {
   const user = c.get("user")!;
+  const logCtx = createLogContext(user);
   const db = getDb();
   const { userState, record } = getUserStateAndRecord(user.id);
 
   if (userState?.currentState !== "on_break") {
+    await logger.warn(
+      "END_BREAK",
+      "休憩中でないと休憩を終了できません",
+      logCtx,
+      { currentState: userState?.currentState },
+    );
     if (isHtmxRequest(c)) {
       return htmxResponse(c, user.id, {
         text: "休憩中でないと休憩を終了できません",
@@ -213,6 +253,7 @@ attendanceRoutes.post("/end-break", async (c) => {
   }
 
   if (!record) {
+    await logger.warn("END_BREAK", "出社記録が見つかりません", logCtx);
     if (isHtmxRequest(c)) {
       return htmxResponse(c, user.id, {
         text: "出社記録が見つかりません",
@@ -222,37 +263,54 @@ attendanceRoutes.post("/end-break", async (c) => {
     return c.json({ success: false, message: "出社記録が見つかりません" }, 400);
   }
 
-  const now = nowISO();
-  const updateRecord = db.prepare(
-    "UPDATE AttendanceRecord SET breakEnd = ? WHERE id = ?",
-  );
-  updateRecord.run(now, record.id);
+  try {
+    const now = nowISO();
+    const updateRecord = db.prepare(
+      "UPDATE AttendanceRecord SET breakEnd = ? WHERE id = ?",
+    );
+    updateRecord.run(now, record.id);
 
-  const updateState = db.prepare(
-    "UPDATE UserState SET currentState = ?, lastUpdated = ? WHERE userId = ?",
-  );
-  updateState.run("checked_in", now, user.id);
+    const updateState = db.prepare(
+      "UPDATE UserState SET currentState = ?, lastUpdated = ? WHERE userId = ?",
+    );
+    updateState.run("checked_in", now, user.id);
 
-  if (isHtmxRequest(c)) {
-    return htmxResponse(c, user.id, {
-      text: "休憩を終了しました",
-      type: "success",
+    await logger.info("END_BREAK", "休憩終了", logCtx);
+
+    if (isHtmxRequest(c)) {
+      return htmxResponse(c, user.id, {
+        text: "休憩を終了しました",
+        type: "success",
+      });
+    }
+    return c.json({
+      success: true,
+      message: "休憩を終了しました",
+      currentState: "checked_in",
     });
+  } catch (error) {
+    const err = error instanceof Error ? error : new Error(String(error));
+    await logger.error(
+      "END_BREAK",
+      "休憩終了中にエラーが発生しました",
+      logCtx,
+      err,
+    );
+    throw error;
   }
-  return c.json({
-    success: true,
-    message: "休憩を終了しました",
-    currentState: "checked_in",
-  });
 });
 
 // 退社
 attendanceRoutes.post("/check-out", async (c) => {
   const user = c.get("user")!;
+  const logCtx = createLogContext(user);
   const db = getDb();
   const { userState, record } = getUserStateAndRecord(user.id);
 
   if (userState?.currentState !== "checked_in") {
+    await logger.warn("CHECK_OUT", "出社状態でないと退社できません", logCtx, {
+      currentState: userState?.currentState,
+    });
     if (isHtmxRequest(c)) {
       return htmxResponse(c, user.id, {
         text: "出社状態でないと退社できません",
@@ -266,6 +324,7 @@ attendanceRoutes.post("/check-out", async (c) => {
   }
 
   if (!record) {
+    await logger.warn("CHECK_OUT", "出社記録が見つかりません", logCtx);
     if (isHtmxRequest(c)) {
       return htmxResponse(c, user.id, {
         text: "出社記録が見つかりません",
@@ -275,34 +334,57 @@ attendanceRoutes.post("/check-out", async (c) => {
     return c.json({ success: false, message: "出社記録が見つかりません" }, 400);
   }
 
-  const now = nowISO();
-  const updateRecord = db.prepare(
-    "UPDATE AttendanceRecord SET checkOut = ? WHERE id = ?",
-  );
-  updateRecord.run(now, record.id);
+  try {
+    const now = nowISO();
+    const updateRecord = db.prepare(
+      "UPDATE AttendanceRecord SET checkOut = ? WHERE id = ?",
+    );
+    updateRecord.run(now, record.id);
 
-  const updateState = db.prepare(
-    "UPDATE UserState SET currentState = ?, lastUpdated = ? WHERE userId = ?",
-  );
-  updateState.run("checked_out", now, user.id);
+    const updateState = db.prepare(
+      "UPDATE UserState SET currentState = ?, lastUpdated = ? WHERE userId = ?",
+    );
+    updateState.run("checked_out", now, user.id);
 
-  if (isHtmxRequest(c)) {
-    return htmxResponse(c, user.id, { text: "退社しました", type: "success" });
+    await logger.info("CHECK_OUT", "退社打刻成功", logCtx);
+
+    if (isHtmxRequest(c)) {
+      return htmxResponse(c, user.id, {
+        text: "退社しました",
+        type: "success",
+      });
+    }
+    return c.json({
+      success: true,
+      message: "退社しました",
+      currentState: "checked_out",
+    });
+  } catch (error) {
+    const err = error instanceof Error ? error : new Error(String(error));
+    await logger.error(
+      "CHECK_OUT",
+      "退社打刻中にエラーが発生しました",
+      logCtx,
+      err,
+    );
+    throw error;
   }
-  return c.json({
-    success: true,
-    message: "退社しました",
-    currentState: "checked_out",
-  });
 });
 
 // 再出社
 attendanceRoutes.post("/recheck-in", async (c) => {
   const user = c.get("user")!;
+  const logCtx = createLogContext(user);
   const db = getDb();
   const { userState } = getUserStateAndRecord(user.id);
 
   if (userState?.currentState !== "checked_out") {
+    await logger.warn(
+      "RECHECK_IN",
+      "退社状態でないと再出社できません",
+      logCtx,
+      { currentState: userState?.currentState },
+    );
     if (isHtmxRequest(c)) {
       return htmxResponse(c, user.id, {
         text: "退社状態でないと再出社できません",
@@ -315,32 +397,49 @@ attendanceRoutes.post("/recheck-in", async (c) => {
     );
   }
 
-  const now = nowISO();
-  const updateState = db.prepare(
-    "UPDATE UserState SET currentState = ?, lastUpdated = ? WHERE userId = ?",
-  );
-  updateState.run("checked_in", now, user.id);
+  try {
+    const now = nowISO();
+    const updateState = db.prepare(
+      "UPDATE UserState SET currentState = ?, lastUpdated = ? WHERE userId = ?",
+    );
+    updateState.run("checked_in", now, user.id);
 
-  if (isHtmxRequest(c)) {
-    return htmxResponse(c, user.id, {
-      text: "再出社しました",
-      type: "success",
+    await logger.info("RECHECK_IN", "再出社", logCtx);
+
+    if (isHtmxRequest(c)) {
+      return htmxResponse(c, user.id, {
+        text: "再出社しました",
+        type: "success",
+      });
+    }
+    return c.json({
+      success: true,
+      message: "再出社しました",
+      currentState: "checked_in",
     });
+  } catch (error) {
+    const err = error instanceof Error ? error : new Error(String(error));
+    await logger.error(
+      "RECHECK_IN",
+      "再出社中にエラーが発生しました",
+      logCtx,
+      err,
+    );
+    throw error;
   }
-  return c.json({
-    success: true,
-    message: "再出社しました",
-    currentState: "checked_in",
-  });
 });
 
 // 欠勤
 attendanceRoutes.post("/absent", async (c) => {
   const user = c.get("user")!;
+  const logCtx = createLogContext(user);
   const db = getDb();
   const { userState, record } = getUserStateAndRecord(user.id);
 
   if (userState?.currentState !== "not_checked_in") {
+    await logger.warn("ABSENT", "出社登録後は欠勤にできません", logCtx, {
+      currentState: userState?.currentState,
+    });
     if (isHtmxRequest(c)) {
       return htmxResponse(c, user.id, {
         text: "出社登録後は欠勤にできません",
@@ -353,37 +452,50 @@ attendanceRoutes.post("/absent", async (c) => {
     );
   }
 
-  const now = nowISO();
-  const { start } = getBusinessDayRange();
+  try {
+    const now = nowISO();
+    const { start } = getBusinessDayRange();
 
-  if (record) {
-    const updateRecord = db.prepare(
-      "UPDATE AttendanceRecord SET isAbsent = 1 WHERE id = ?",
+    if (record) {
+      const updateRecord = db.prepare(
+        "UPDATE AttendanceRecord SET isAbsent = 1 WHERE id = ?",
+      );
+      updateRecord.run(record.id);
+    } else {
+      const insertRecord = db.prepare(
+        "INSERT INTO AttendanceRecord (id, userId, date, isAbsent) VALUES (?, ?, ?, 1)",
+      );
+      insertRecord.run(generateId(), user.id, start.toISOString());
+    }
+
+    const updateState = db.prepare(
+      "UPDATE UserState SET currentState = ?, lastUpdated = ? WHERE userId = ?",
     );
-    updateRecord.run(record.id);
-  } else {
-    const insertRecord = db.prepare(
-      "INSERT INTO AttendanceRecord (id, userId, date, isAbsent) VALUES (?, ?, ?, 1)",
-    );
-    insertRecord.run(generateId(), user.id, start.toISOString());
-  }
+    updateState.run("absent", now, user.id);
 
-  const updateState = db.prepare(
-    "UPDATE UserState SET currentState = ?, lastUpdated = ? WHERE userId = ?",
-  );
-  updateState.run("absent", now, user.id);
+    await logger.info("ABSENT", "欠勤登録", logCtx);
 
-  if (isHtmxRequest(c)) {
-    return htmxResponse(c, user.id, {
-      text: "欠勤として記録しました",
-      type: "success",
+    if (isHtmxRequest(c)) {
+      return htmxResponse(c, user.id, {
+        text: "欠勤として記録しました",
+        type: "success",
+      });
+    }
+    return c.json({
+      success: true,
+      message: "欠勤として記録しました",
+      currentState: "absent",
     });
+  } catch (error) {
+    const err = error instanceof Error ? error : new Error(String(error));
+    await logger.error(
+      "ABSENT",
+      "欠勤登録中にエラーが発生しました",
+      logCtx,
+      err,
+    );
+    throw error;
   }
-  return c.json({
-    success: true,
-    message: "欠勤として記録しました",
-    currentState: "absent",
-  });
 });
 
 // 状態取得API
@@ -425,6 +537,7 @@ attendanceRoutes.get("/edit-requests", async (c) => {
 // 時刻修正申請
 attendanceRoutes.post("/edit-request", async (c) => {
   const user = c.get("user")!;
+  const logCtx = createLogContext(user);
   const db = getDb();
 
   try {
@@ -436,6 +549,12 @@ attendanceRoutes.post("/edit-request", async (c) => {
 
     // バリデーション
     if (!recordId || !field || !newValueRaw || !reason) {
+      await logger.warn(
+        "EDIT_REQUEST",
+        "必要なパラメータが不足しています",
+        logCtx,
+        { recordId, field },
+      );
       if (isHtmxRequest(c)) {
         return htmxResponse(c, user.id, {
           text: "必要なパラメータが不足しています",
@@ -450,6 +569,9 @@ attendanceRoutes.post("/edit-request", async (c) => {
 
     const validFields = ["checkIn", "checkOut", "breakStart", "breakEnd"];
     if (!validFields.includes(field)) {
+      await logger.warn("EDIT_REQUEST", "無効なフィールド名です", logCtx, {
+        field,
+      });
       if (isHtmxRequest(c)) {
         return htmxResponse(c, user.id, {
           text: "無効なフィールド名です",
@@ -466,6 +588,12 @@ attendanceRoutes.post("/edit-request", async (c) => {
     const record = recordStmt.get(recordId) as AttendanceRecord | undefined;
 
     if (!record) {
+      await logger.warn(
+        "EDIT_REQUEST",
+        "指定された勤怠記録が見つかりません",
+        logCtx,
+        { recordId },
+      );
       if (isHtmxRequest(c)) {
         return htmxResponse(c, user.id, {
           text: "指定された勤怠記録が見つかりません",
@@ -479,6 +607,12 @@ attendanceRoutes.post("/edit-request", async (c) => {
     }
 
     if (record.userId !== user.id) {
+      await logger.warn(
+        "EDIT_REQUEST",
+        "他のユーザーの勤怠記録は修正できません",
+        logCtx,
+        { recordUserId: record.userId },
+      );
       if (isHtmxRequest(c)) {
         return htmxResponse(c, user.id, {
           text: "他のユーザーの勤怠記録は修正できません",
@@ -526,6 +660,13 @@ attendanceRoutes.post("/edit-request", async (c) => {
       now,
     );
 
+    await logger.info("EDIT_REQUEST", "時刻修正申請を作成しました", logCtx, {
+      field,
+      oldValue,
+      newValue,
+      reason,
+    });
+
     if (isHtmxRequest(c)) {
       return htmxResponse(c, user.id, {
         text: "修正申請を受け付けました。管理者の承認をお待ちください。",
@@ -534,7 +675,13 @@ attendanceRoutes.post("/edit-request", async (c) => {
     }
     return c.json({ success: true, message: "修正申請を受け付けました" });
   } catch (error) {
-    console.error("Edit request error:", error);
+    const err = error instanceof Error ? error : new Error(String(error));
+    await logger.error(
+      "EDIT_REQUEST",
+      "申請中にエラーが発生しました",
+      logCtx,
+      err,
+    );
     if (isHtmxRequest(c)) {
       return htmxResponse(c, user.id, {
         text: "申請中にエラーが発生しました",

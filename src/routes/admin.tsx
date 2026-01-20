@@ -3,6 +3,7 @@
 import { Hono } from "hono";
 import { getDb, generateId, nowISO } from "../db/client.ts";
 import { requireAdmin } from "../middleware/auth.ts";
+import { logger, createLogContext } from "../lib/logger.ts";
 import type {
   AppEnv,
   AttendanceRecord,
@@ -18,6 +19,8 @@ adminRoutes.use("*", requireAdmin);
 
 // 勤怠記録一覧取得
 adminRoutes.get("/attendance", async (c) => {
+  const user = c.get("user")!;
+  const logCtx = createLogContext(user);
   const db = getDb();
   const url = new URL(c.req.url);
 
@@ -113,6 +116,13 @@ adminRoutes.get("/attendance", async (c) => {
       pageSize,
     };
 
+    await logger.info("ADMIN_VIEW_ATTENDANCE", "勤怠記録一覧を取得", logCtx, {
+      startDate: start.toISOString().slice(0, 10),
+      endDate: end.toISOString().slice(0, 10),
+      page,
+      total,
+    });
+
     // HTMXリクエストの場合はHTMLを返す
     if (isHtmxRequest) {
       const startDateStr = start.toISOString().slice(0, 10);
@@ -134,7 +144,13 @@ adminRoutes.get("/attendance", async (c) => {
       pagination,
     });
   } catch (error) {
-    console.error("Error fetching attendance records:", error);
+    const err = error instanceof Error ? error : new Error(String(error));
+    await logger.error(
+      "ADMIN_VIEW_ATTENDANCE",
+      "勤怠記録の取得に失敗しました",
+      logCtx,
+      err,
+    );
 
     if (isHtmxRequest) {
       return c.html(
@@ -152,6 +168,8 @@ adminRoutes.get("/attendance", async (c) => {
 
 // CSVエクスポート
 adminRoutes.get("/export-csv", async (c) => {
+  const user = c.get("user")!;
+  const logCtx = createLogContext(user);
   const db = getDb();
   const url = new URL(c.req.url);
 
@@ -254,11 +272,24 @@ adminRoutes.get("/export-csv", async (c) => {
         ? `monthly_attendance_${start.toISOString().slice(0, 7)}.csv`
         : `attendance_${start.toISOString().slice(0, 10)}_${end.toISOString().slice(0, 10)}.csv`;
 
+    await logger.info("ADMIN_EXPORT_CSV", "CSVエクスポート実行", logCtx, {
+      type,
+      startDate: start.toISOString().slice(0, 10),
+      endDate: end.toISOString().slice(0, 10),
+      recordCount: records.length,
+    });
+
     c.header("Content-Type", "text/csv; charset=utf-8");
     c.header("Content-Disposition", `attachment; filename="${filename}"`);
     return c.body(csv);
   } catch (error) {
-    console.error("Error exporting CSV:", error);
+    const err = error instanceof Error ? error : new Error(String(error));
+    await logger.error(
+      "ADMIN_EXPORT_CSV",
+      "CSVエクスポートに失敗しました",
+      logCtx,
+      err,
+    );
     return c.json(
       { success: false, message: "CSVエクスポートに失敗しました" },
       500,
@@ -268,6 +299,8 @@ adminRoutes.get("/export-csv", async (c) => {
 
 // 時刻修正申請一覧（管理者用）
 adminRoutes.get("/edit-requests", async (c) => {
+  const user = c.get("user")!;
+  const logCtx = createLogContext(user);
   const db = getDb();
   const url = new URL(c.req.url);
   const status = url.searchParams.get("status") || "pending";
@@ -305,7 +338,13 @@ adminRoutes.get("/edit-requests", async (c) => {
 
     return c.json({ success: true, requests: formattedRequests });
   } catch (error) {
-    console.error("Error fetching edit requests:", error);
+    const err = error instanceof Error ? error : new Error(String(error));
+    await logger.error(
+      "EDIT_REQUEST",
+      "修正申請の取得に失敗しました",
+      logCtx,
+      err,
+    );
     return c.json(
       { success: false, message: "修正申請の取得に失敗しました" },
       500,
@@ -315,21 +354,37 @@ adminRoutes.get("/edit-requests", async (c) => {
 
 // 時刻修正申請の承認
 adminRoutes.post("/edit-requests/:id/approve", async (c) => {
+  const adminUser = c.get("user")!;
+  const logCtx = createLogContext(adminUser);
   const db = getDb();
   const requestId = c.req.param("id");
 
   try {
     // 申請を取得
     const requestStmt = db.prepare(
-      "SELECT * FROM TimeEditRequest WHERE id = ?",
+      "SELECT ter.*, u.name as userName FROM TimeEditRequest ter JOIN User u ON ter.userId = u.id WHERE ter.id = ?",
     );
-    const request = requestStmt.get(requestId) as TimeEditRequest | undefined;
+    const request = requestStmt.get(requestId) as
+      | (TimeEditRequest & { userName: string })
+      | undefined;
 
     if (!request) {
+      await logger.warn(
+        "EDIT_REQUEST_APPROVE",
+        "申請が見つかりません",
+        logCtx,
+        { requestId },
+      );
       return c.redirect("/admin/edit-requests?error=not_found");
     }
 
     if (request.status !== "pending") {
+      await logger.warn(
+        "EDIT_REQUEST_APPROVE",
+        "この申請は既に処理されています",
+        logCtx,
+        { requestId, status: request.status },
+      );
       return c.redirect("/admin/edit-requests?error=already_processed");
     }
 
@@ -350,30 +405,63 @@ adminRoutes.post("/edit-requests/:id/approve", async (c) => {
       updateRecordStmt.run(request.newValue, request.recordId);
     }
 
+    await logger.info(
+      "EDIT_REQUEST_APPROVE",
+      "時刻修正申請を承認しました",
+      logCtx,
+      {
+        requestId,
+        targetUser: request.userName,
+        field: request.field,
+        oldValue: request.oldValue,
+        newValue: request.newValue,
+      },
+    );
+
     return c.redirect("/admin/edit-requests?success=approved");
   } catch (error) {
-    console.error("Error approving edit request:", error);
+    const err = error instanceof Error ? error : new Error(String(error));
+    await logger.error(
+      "EDIT_REQUEST_APPROVE",
+      "申請承認中にエラーが発生しました",
+      logCtx,
+      err,
+      { requestId },
+    );
     return c.redirect("/admin/edit-requests?error=server_error");
   }
 });
 
 // 時刻修正申請の拒否
 adminRoutes.post("/edit-requests/:id/reject", async (c) => {
+  const adminUser = c.get("user")!;
+  const logCtx = createLogContext(adminUser);
   const db = getDb();
   const requestId = c.req.param("id");
 
   try {
     // 申請を取得
     const requestStmt = db.prepare(
-      "SELECT * FROM TimeEditRequest WHERE id = ?",
+      "SELECT ter.*, u.name as userName FROM TimeEditRequest ter JOIN User u ON ter.userId = u.id WHERE ter.id = ?",
     );
-    const request = requestStmt.get(requestId) as TimeEditRequest | undefined;
+    const request = requestStmt.get(requestId) as
+      | (TimeEditRequest & { userName: string })
+      | undefined;
 
     if (!request) {
+      await logger.warn("EDIT_REQUEST_REJECT", "申請が見つかりません", logCtx, {
+        requestId,
+      });
       return c.redirect("/admin/edit-requests?error=not_found");
     }
 
     if (request.status !== "pending") {
+      await logger.warn(
+        "EDIT_REQUEST_REJECT",
+        "この申請は既に処理されています",
+        logCtx,
+        { requestId, status: request.status },
+      );
       return c.redirect("/admin/edit-requests?error=already_processed");
     }
 
@@ -385,15 +473,35 @@ adminRoutes.post("/edit-requests/:id/reject", async (c) => {
     );
     updateRequestStmt.run("rejected", now, requestId);
 
+    await logger.info(
+      "EDIT_REQUEST_REJECT",
+      "時刻修正申請を拒否しました",
+      logCtx,
+      {
+        requestId,
+        targetUser: request.userName,
+        field: request.field,
+      },
+    );
+
     return c.redirect("/admin/edit-requests?success=rejected");
   } catch (error) {
-    console.error("Error rejecting edit request:", error);
+    const err = error instanceof Error ? error : new Error(String(error));
+    await logger.error(
+      "EDIT_REQUEST_REJECT",
+      "申請拒否中にエラーが発生しました",
+      logCtx,
+      err,
+      { requestId },
+    );
     return c.redirect("/admin/edit-requests?error=server_error");
   }
 });
 
 // 時刻修正申請の処理（承認/拒否）- レガシーAPI
 adminRoutes.post("/process-edit-request", async (c) => {
+  const adminUser = c.get("user")!;
+  const logCtx = createLogContext(adminUser);
   const db = getDb();
 
   try {
@@ -402,6 +510,12 @@ adminRoutes.post("/process-edit-request", async (c) => {
     const action = body.action as string;
 
     if (!requestId || !action) {
+      await logger.warn(
+        "EDIT_REQUEST",
+        "必要なパラメータが不足しています",
+        logCtx,
+        { requestId, action },
+      );
       return c.json(
         { success: false, message: "必要なパラメータが不足しています" },
         400,
@@ -409,20 +523,34 @@ adminRoutes.post("/process-edit-request", async (c) => {
     }
 
     if (action !== "approve" && action !== "reject") {
+      await logger.warn("EDIT_REQUEST", "無効なアクションです", logCtx, {
+        action,
+      });
       return c.json({ success: false, message: "無効なアクションです" }, 400);
     }
 
     // 申請を取得
     const requestStmt = db.prepare(
-      "SELECT * FROM TimeEditRequest WHERE id = ?",
+      "SELECT ter.*, u.name as userName FROM TimeEditRequest ter JOIN User u ON ter.userId = u.id WHERE ter.id = ?",
     );
-    const request = requestStmt.get(requestId) as TimeEditRequest | undefined;
+    const request = requestStmt.get(requestId) as
+      | (TimeEditRequest & { userName: string })
+      | undefined;
 
     if (!request) {
+      await logger.warn("EDIT_REQUEST", "申請が見つかりません", logCtx, {
+        requestId,
+      });
       return c.json({ success: false, message: "申請が見つかりません" }, 404);
     }
 
     if (request.status !== "pending") {
+      await logger.warn(
+        "EDIT_REQUEST",
+        "この申請は既に処理されています",
+        logCtx,
+        { requestId, status: request.status },
+      );
       return c.json(
         { success: false, message: "この申請は既に処理されています" },
         400,
@@ -449,13 +577,32 @@ adminRoutes.post("/process-edit-request", async (c) => {
       }
     }
 
+    const logAction =
+      action === "approve" ? "EDIT_REQUEST_APPROVE" : "EDIT_REQUEST_REJECT";
+    await logger.info(
+      logAction,
+      action === "approve" ? "申請を承認しました" : "申請を拒否しました",
+      logCtx,
+      {
+        requestId,
+        targetUser: request.userName,
+        field: request.field,
+      },
+    );
+
     return c.json({
       success: true,
       message:
         action === "approve" ? "申請を承認しました" : "申請を拒否しました",
     });
   } catch (error) {
-    console.error("Error processing edit request:", error);
+    const err = error instanceof Error ? error : new Error(String(error));
+    await logger.error(
+      "EDIT_REQUEST",
+      "申請処理中にエラーが発生しました",
+      logCtx,
+      err,
+    );
     return c.json(
       { success: false, message: "申請処理中にエラーが発生しました" },
       500,

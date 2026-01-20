@@ -11,3 +11,7 @@
 deno.lock
 dev.db
 .tmp
+
+# logs
+logs/
+*.log
