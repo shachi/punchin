@@ -14,10 +14,11 @@ export const attendanceRoutes = new Hono<AppEnv>();
 attendanceRoutes.use("*", requireAuth);
 
 // ユーザーの状態とレコードを取得するヘルパー
+// 新しい業務日にレコードがない場合、UserStateを自動リセット
 function getUserStateAndRecord(userId: string) {
   const db = getDb();
   const stateStmt = db.prepare("SELECT * FROM UserState WHERE userId = ?");
-  const userState = stateStmt.get(userId) as UserState | undefined;
+  let userState = stateStmt.get(userId) as UserState | undefined;
 
   const { start, end } = getBusinessDayRange();
   const recordStmt = db.prepare(
@@ -28,6 +29,26 @@ function getUserStateAndRecord(userId: string) {
     start.toISOString(),
     end.toISOString(),
   ) as AttendanceRecord | undefined;
+
+  // 新しい業務日にレコードがなく、UserStateが作業中の状態の場合はリセット
+  if (
+    !record &&
+    userState &&
+    ["checked_in", "on_break"].includes(userState.currentState)
+  ) {
+    const now = nowISO();
+    const updateState = db.prepare(
+      "UPDATE UserState SET currentState = 'not_checked_in', lastUpdated = ? WHERE userId = ?",
+    );
+    updateState.run(now, userId);
+
+    // 更新後の状態を再取得
+    userState = stateStmt.get(userId) as UserState | undefined;
+
+    console.log(
+      `[AUTO_RESET] UserId: ${userId} - UserState reset to not_checked_in (no record for today)`,
+    );
+  }
 
   return { userState, record };
 }
