@@ -30,11 +30,13 @@ function getUserStateAndRecord(userId: string) {
     end.toISOString(),
   ) as AttendanceRecord | undefined;
 
-  // 新しい業務日にレコードがなく、UserStateが作業中の状態の場合はリセット
+  // 新しい業務日にレコードがなく、UserStateが前日の状態のままの場合はリセット
+  // checked_in, on_break, checked_out すべてをリセット対象とする
   if (
     !record &&
     userState &&
-    ["checked_in", "on_break"].includes(userState.currentState)
+    userState.currentState !== "not_checked_in" &&
+    userState.currentState !== "absent"
   ) {
     const now = nowISO();
     const updateState = db.prepare(
@@ -46,7 +48,7 @@ function getUserStateAndRecord(userId: string) {
     userState = stateStmt.get(userId) as UserState | undefined;
 
     console.log(
-      `[AUTO_RESET] UserId: ${userId} - UserState reset to not_checked_in (no record for today)`,
+      `[AUTO_RESET] UserId: ${userId} - UserState reset to not_checked_in (new business day)`,
     );
   }
 
