@@ -143,7 +143,7 @@ export const EditRequestsPage: FC<EditRequestsPageProps> = ({
                   <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     状態
                   </th>
-                  <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[160px]">
                     操作
                   </th>
                 </tr>
@@ -186,9 +186,9 @@ export const EditRequestsPage: FC<EditRequestsPageProps> = ({
                             : "拒否済"}
                       </span>
                     </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium min-w-[160px]">
                       {request.status === "pending" && (
-                        <div class="flex justify-end space-x-2">
+                        <div class="flex justify-end space-x-2 flex-nowrap">
                           <form
                             method="post"
                             action={`/api/admin/edit-requests/${request.id}/approve`}
