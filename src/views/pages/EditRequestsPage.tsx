@@ -166,7 +166,7 @@ export const EditRequestsPage: FC<EditRequestsPageProps> = ({
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {formatTime(request.newValue)}
                     </td>
-                    <td class="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">
+                    <td class="px-6 py-4 text-sm text-gray-500 max-w-[150px] break-words whitespace-normal">
                       {request.reason || "-"}
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap">
