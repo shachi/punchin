@@ -52,7 +52,7 @@ export const EditRequestsPage: FC<EditRequestsPageProps> = ({
   errorMessage,
 }) => {
   return (
-    <div class="max-w-6xl mx-auto">
+    <div class="max-w-7xl mx-auto">
       <div class="bg-white shadow-md rounded-lg p-6 mb-6">
         <div class="flex justify-between items-center mb-6">
           <h1 class="text-2xl font-bold text-gray-800">時刻修正申請一覧</h1>
