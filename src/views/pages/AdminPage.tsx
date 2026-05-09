@@ -24,7 +24,10 @@ export const AdminPage: FC = () => {
               ← 前月
             </button>
             <h2 class="text-xl font-semibold" id="month-display">
-              {new Date().toLocaleDateString("ja-JP", { year: "numeric", month: "long" })}
+              {new Date().toLocaleDateString("ja-JP", {
+                year: "numeric",
+                month: "long",
+              })}
             </h2>
             <button
               hx-get="/api/admin/attendance"
@@ -39,15 +42,25 @@ export const AdminPage: FC = () => {
         </div>
 
         {/* アクションボタン */}
-        <div class="flex justify-between mb-4">
-          <div class="flex space-x-2">
+        <div class="mb-4">
+          <div class="flex space-x-2 mb-3">
             <a
               href="/api/admin/export-csv?type=monthly"
               id="export-csv-link"
               class="bg-green-500 hover:bg-green-600 text-white font-medium py-2 px-4 rounded flex items-center"
             >
-              <svg class="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              <svg
+                class="h-5 w-5 mr-1"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                />
               </svg>
               月次CSVエクスポート
             </a>
@@ -56,19 +69,65 @@ export const AdminPage: FC = () => {
               href="/admin/edit-requests"
               class="bg-purple-500 hover:bg-purple-600 text-white font-medium py-2 px-4 rounded flex items-center"
             >
-              <svg class="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              <svg
+                class="h-5 w-5 mr-1"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                />
               </svg>
               時刻修正申請
             </a>
           </div>
+
+          {/* XLSX出力フォーム（先方提出フォーマット） */}
+          <form
+            action="/api/admin/export-xlsx"
+            method="get"
+            class="flex items-center gap-2 bg-blue-50 border border-blue-200 px-3 py-2 rounded"
+          >
+            <span class="text-sm text-gray-700 font-medium"> 月次XLSX:</span>
+            <label class="text-sm text-gray-600">月</label>
+            <input
+              type="month"
+              name="month"
+              required
+              defaultValue={`${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`}
+              class="border border-gray-300 rounded px-2 py-1 text-sm"
+            />
+            <label class="text-sm text-gray-600">ファイル名</label>
+            <input
+              type="text"
+              name="filename"
+              required
+              placeholder="例: ITC2604"
+              pattern="[A-Za-z0-9_\-]+"
+              title="英数字・アンダースコア・ハイフンのみ"
+              class="border border-gray-300 rounded px-2 py-1 text-sm w-36"
+            />
+            <button
+              type="submit"
+              class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-1 px-4 rounded text-sm"
+            >
+              ダウンロード
+            </button>
+            <span class="text-xs text-gray-500 ml-auto">
+              .xlsx で保存されます
+            </span>
+          </form>
         </div>
 
         {/* 日付フィルタ */}
         <div class="bg-gray-50 rounded-lg p-6 mb-6">
           <h2 class="text-lg font-medium text-gray-700 mb-4">勤怠記録</h2>
 
-          <form 
+          <form
             id="filter-form"
             hx-get="/api/admin/attendance"
             hx-target="#records-table"
@@ -76,7 +135,9 @@ export const AdminPage: FC = () => {
             class="flex flex-wrap gap-4 mb-6"
           >
             <div class="flex-1 min-w-[200px]">
-              <label class="block text-sm font-medium text-gray-700 mb-1">開始日</label>
+              <label class="block text-sm font-medium text-gray-700 mb-1">
+                開始日
+              </label>
               <input
                 type="date"
                 name="startDate"
@@ -86,7 +147,9 @@ export const AdminPage: FC = () => {
             </div>
 
             <div class="flex-1 min-w-[200px]">
-              <label class="block text-sm font-medium text-gray-700 mb-1">終了日</label>
+              <label class="block text-sm font-medium text-gray-700 mb-1">
+                終了日
+              </label>
               <input
                 type="date"
                 name="endDate"
@@ -106,7 +169,12 @@ export const AdminPage: FC = () => {
           </form>
 
           {/* テーブル（HTMX で更新） */}
-          <div id="records-table" hx-get="/api/admin/attendance" hx-trigger="load" hx-swap="innerHTML">
+          <div
+            id="records-table"
+            hx-get="/api/admin/attendance"
+            hx-trigger="load"
+            hx-swap="innerHTML"
+          >
             <div class="text-center py-8 text-gray-500">読み込み中...</div>
           </div>
         </div>
@@ -118,7 +186,12 @@ export const AdminPage: FC = () => {
 // サーバーサイドでテーブル部分をレンダリングするためのコンポーネント（APIから呼ばれる）
 export const AdminRecordsTable: FC<{
   records: AdminRecordWithUser[];
-  pagination: { currentPage: number; totalPages: number; total: number; pageSize: number };
+  pagination: {
+    currentPage: number;
+    totalPages: number;
+    total: number;
+    pageSize: number;
+  };
   startDate: string;
   endDate: string;
 }> = ({ records, pagination, startDate, endDate }) => {
@@ -128,19 +201,36 @@ export const AdminRecordsTable: FC<{
         <table class="min-w-full divide-y divide-gray-200">
           <thead class="bg-gray-50">
             <tr>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">日付</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">氏名</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">出社時間</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">退社時間</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">休憩時間(分)</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">勤務時間</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">欠勤</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                日付
+              </th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                氏名
+              </th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                出社時間
+              </th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                退社時間
+              </th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                休憩時間
+              </th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                勤務時間
+              </th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                欠勤
+              </th>
             </tr>
           </thead>
           <tbody class="bg-white divide-y divide-gray-200">
             {records.length === 0 ? (
               <tr>
-                <td colspan={7} class="px-6 py-4 text-center text-sm text-gray-500">
+                <td
+                  colspan={7}
+                  class="px-6 py-4 text-center text-sm text-gray-500"
+                >
                   記録がありません
                 </td>
               </tr>
@@ -187,8 +277,13 @@ export const AdminRecordsTable: FC<{
       {pagination.totalPages > 1 && (
         <div class="mt-4">
           <div class="mt-2 text-sm text-gray-500 text-center">
-            全{pagination.total}件中 {(pagination.currentPage - 1) * pagination.pageSize + 1}～
-            {Math.min(pagination.currentPage * pagination.pageSize, pagination.total)}件を表示
+            全{pagination.total}件中{" "}
+            {(pagination.currentPage - 1) * pagination.pageSize + 1}～
+            {Math.min(
+              pagination.currentPage * pagination.pageSize,
+              pagination.total,
+            )}
+            件を表示
           </div>
           <div class="flex items-center justify-center mt-4 space-x-2">
             <button
@@ -199,21 +294,24 @@ export const AdminRecordsTable: FC<{
             >
               前へ
             </button>
-            
-            {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
-              const page = i + 1;
-              return (
-                <button
-                  key={page}
-                  hx-get={`/api/admin/attendance?startDate=${startDate}&endDate=${endDate}&page=${page}`}
-                  hx-target="#records-table"
-                  class={`px-3 py-1 border rounded mx-1 ${page === pagination.currentPage ? "bg-blue-500 text-white" : "border-gray-300 hover:bg-gray-100"}`}
-                >
-                  {page}
-                </button>
-              );
-            })}
-            
+
+            {Array.from(
+              { length: Math.min(5, pagination.totalPages) },
+              (_, i) => {
+                const page = i + 1;
+                return (
+                  <button
+                    key={page}
+                    hx-get={`/api/admin/attendance?startDate=${startDate}&endDate=${endDate}&page=${page}`}
+                    hx-target="#records-table"
+                    class={`px-3 py-1 border rounded mx-1 ${page === pagination.currentPage ? "bg-blue-500 text-white" : "border-gray-300 hover:bg-gray-100"}`}
+                  >
+                    {page}
+                  </button>
+                );
+              },
+            )}
+
             <button
               hx-get={`/api/admin/attendance?startDate=${startDate}&endDate=${endDate}&page=${pagination.currentPage + 1}`}
               hx-target="#records-table"
@@ -263,20 +361,31 @@ function calculateWorkHours(record: AdminRecordWithUser): string {
   const checkIn = new Date(record.checkIn).getTime();
   const checkOut = new Date(record.checkOut).getTime();
   let totalMinutes = (checkOut - checkIn) / 60000;
-  
+
   if (record.breakStart && record.breakEnd) {
     const breakStart = new Date(record.breakStart).getTime();
     const breakEnd = new Date(record.breakEnd).getTime();
     const breakMinutes = (breakEnd - breakStart) / 60000;
     totalMinutes -= breakMinutes;
   }
-  
-  return (totalMinutes / 60).toFixed(2);
+
+  if (totalMinutes < 0) return "-";
+
+  const total = Math.round(totalMinutes);
+  const hours = Math.floor(total / 60);
+  const minutes = total % 60;
+  return `${hours}:${minutes.toString().padStart(2, "0")}`;
 }
 
 function calculateBreakMinutes(record: AdminRecordWithUser): string {
   if (!record.breakStart || !record.breakEnd) return "-";
   const breakStart = new Date(record.breakStart).getTime();
   const breakEnd = new Date(record.breakEnd).getTime();
-  return Math.round((breakEnd - breakStart) / 60000).toString();
+  const total = Math.round((breakEnd - breakStart) / 60000);
+
+  if (total < 0) return "-";
+
+  const hours = Math.floor(total / 60);
+  const minutes = total % 60;
+  return `${hours}:${minutes.toString().padStart(2, "0")}`;
 }

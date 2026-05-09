@@ -20,6 +20,7 @@
     "dayjs/plugin/timezone": "npm:dayjs@1.11.19/plugin/timezone.js",
     "dayjs/plugin/customParseFormat": "npm:dayjs@1.11.19/plugin/customParseFormat.js",
     "dayjs/locale/ja": "npm:dayjs@1.11.19/locale/ja.js",
+    "exceljs": "npm:exceljs@4.4.0",
     "@std/crypto": "jsr:@std/crypto@^1.0.5"
   },
   "compilerOptions": {

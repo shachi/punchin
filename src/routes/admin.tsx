@@ -3,6 +3,7 @@
 import { Hono } from "hono";
 import { getDb, generateId, nowISO } from "../db/client.ts";
 import { requireAdmin } from "../middleware/auth.ts";
+import { generateMonthlyXlsxBuffer } from "../lib/excel.ts";
 import { logger, createLogContext } from "../lib/logger.ts";
 import type {
   AppEnv,
@@ -294,6 +295,62 @@ adminRoutes.get("/export-csv", async (c) => {
       { success: false, message: "CSVエクスポートに失敗しました" },
       500,
     );
+  }
+});
+
+// XLSXエクスポート（先方提出フォーマット）
+adminRoutes.get("/export-xlsx", async (c) => {
+  const user = c.get("user")!;
+  const logCtx = createLogContext(user);
+  const url = new URL(c.req.url);
+
+  const monthStr = url.searchParams.get("month") || "";
+  const filenameRaw = url.searchParams.get("filename") || "";
+
+  // 月の形式チェック
+  if (!monthStr.match(/^\d{4}-\d{2}$/)) {
+    await logger.warn("ADMIN_EXPORT_XLSX", "月の指定が不正", logCtx, {
+      monthStr,
+    });
+    return c.text("月の指定が不正です (YYYY-MM形式)", 400);
+  }
+
+  // ファイル名のサニタイズ（英数字、_、- のみ許可）
+  const filename = filenameRaw.replace(/[^A-Za-z0-9_\-]/g, "");
+  if (!filename) {
+    await logger.warn("ADMIN_EXPORT_XLSX", "ファイル名が不正", logCtx, {
+      filenameRaw,
+    });
+    return c.text("ファイル名が不正です（英数字・_・- のみ）", 400);
+  }
+
+  const [year, month] = monthStr.split("-").map(Number);
+
+  try {
+    const buffer = await generateMonthlyXlsxBuffer(year, month);
+
+    await logger.info("ADMIN_EXPORT_XLSX", "XLSX出力", logCtx, {
+      year,
+      month,
+      filename,
+      bytes: buffer.byteLength,
+    });
+
+    c.header(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    c.header("Content-Disposition", `attachment; filename="${filename}.xlsx"`);
+    return c.body(buffer);
+  } catch (error) {
+    const err = error instanceof Error ? error : new Error(String(error));
+    await logger.error(
+      "ADMIN_EXPORT_XLSX",
+      "XLSX出力に失敗しました",
+      logCtx,
+      err,
+    );
+    return c.text("XLSX出力に失敗しました", 500);
   }
 });
 

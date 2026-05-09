@@ -25,6 +25,7 @@ export type LogAction =
   | "EDIT_REQUEST_REJECT"
   // 管理者操作系
   | "ADMIN_EXPORT_CSV"
+  | "ADMIN_EXPORT_XLSX"
   | "ADMIN_VIEW_ATTENDANCE"
   // システム系
   | "SERVER_START"
