@@ -1,6 +1,3 @@
-// attendance-deno/src/lib/logger.ts
-// CloudWatch連携対応のJSONログ出力ユーティリティ
-
 import { ensureDirSync } from "https://deno.land/std@0.208.0/fs/ensure_dir.ts";
 
 export type LogLevel = "INFO" | "WARN" | "ERROR";
@@ -23,6 +20,8 @@ export type LogAction =
   | "EDIT_REQUEST"
   | "EDIT_REQUEST_APPROVE"
   | "EDIT_REQUEST_REJECT"
+  // 外部通知系
+  | "SLACK_NOTIFY"
   // 管理者操作系
   | "ADMIN_EXPORT_CSV"
   | "ADMIN_EXPORT_XLSX"

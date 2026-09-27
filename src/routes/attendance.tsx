@@ -5,6 +5,7 @@ import { getDb, generateId, nowISO } from "../db/client.ts";
 import { getBusinessDayRange } from "../lib/dayjs.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { logger, createLogContext } from "../lib/logger.ts";
+import { notifyEditRequest } from "../lib/slack.ts";
 import type { AppEnv, UserState, AttendanceRecord } from "../types.ts";
 import { DashboardContent } from "../views/pages/DashboardContent.tsx";
 
@@ -689,6 +690,19 @@ attendanceRoutes.post("/edit-request", async (c) => {
       newValue,
       reason,
     });
+
+    // Slack通知（awaitしない：通知失敗で申請を失敗させない）
+    notifyEditRequest(
+      {
+        userName: user.name,
+        recordDate: record.date,
+          field,
+          oldValue,
+          newValue,
+          reason,
+      },
+      logCtx,
+    ).catch(() => {});
 
     if (isHtmxRequest(c)) {
       return htmxResponse(c, user.id, {
