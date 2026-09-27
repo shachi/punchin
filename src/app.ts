@@ -15,7 +15,10 @@ import type { AppEnv } from "./types.ts";
 export const app = new Hono<AppEnv>();
 
 // ミドルウェア
-app.use("*", honoLogger());
+// テスト時（DENO_ENV=test）はアクセスログを出さない
+if (Deno.env.get("DENO_ENV") !== "test") {
+  app.use("*", honoLogger());
+}
 app.use("*", secureHeaders());
 app.use("*", authMiddleware);
 

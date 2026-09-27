@@ -64,7 +64,7 @@ authRoutes.post("/login", async (c) => {
       id: user.id,
       email: user.email,
       name: user.name,
-      isAdmin: user.isAdmin,
+      isAdmin: Boolean(user.isAdmin),
     });
 
     // Cookie設定

@@ -88,7 +88,8 @@ async function writeLog(entry: LogEntry): Promise<void> {
 
 // ログをコンソールにも出力（開発時用）
 function consoleLog(entry: LogEntry): void {
-  const isDev = Deno.env.get("DENO_ENV") !== "production";
+  const env = Deno.env.get("DENO_ENV");
+  const isDev = env !== "production" && env !== "test";
   if (isDev) {
     const color =
       entry.level === "ERROR"

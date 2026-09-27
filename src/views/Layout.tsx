@@ -84,7 +84,7 @@ const Header: FC<{ user?: SessionUser | null }> = ({ user }) => {
                   <li>
                     <form
                       action="/api/auth/logout"
-                      method="POST"
+                      method="post"
                       class="inline"
                     >
                       <button

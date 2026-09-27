@@ -341,7 +341,8 @@ adminRoutes.get("/export-xlsx", async (c) => {
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     );
     c.header("Content-Disposition", `attachment; filename="${filename}.xlsx"`);
-    return c.body(buffer);
+    // Uint8Array<ArrayBufferLike> → Hono の body 型に合わせる（中身は同じ）
+    return c.body(buffer as Uint8Array<ArrayBuffer>);
   } catch (error) {
     const err = error instanceof Error ? error : new Error(String(error));
     await logger.error(
