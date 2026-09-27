@@ -128,6 +128,7 @@ pageRoutes.get("/admin/edit-requests", requireAdmin, (c) => {
       a.breakStart as recordBreakStart,
       a.breakEnd as recordBreakEnd
     FROM TimeEditRequest r
+    LEFT JOIN User u ON r.userId = u.id
     LEFT JOIN AttendanceRecord a ON r.recordId = a.id
     ORDER BY
       CASE WHEN r.status = 'pending' THEN 0 ELSE 1 END,
